@@ -1,0 +1,108 @@
+name: Build Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release-build.yml
+      - VERSION
+      - README.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Validate release source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat VERSION)" = "0.1.0"
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+          files=$(gofmt -l ./cmd ./internal)
+          test -z "$files"
+          go vet ./...
+          go test -race -count=1 ./...
+
+      - name: Build native Linux binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release/x86_64 release/arm64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -trimpath -ldflags='-s -w' \
+            -o release/x86_64/Dandelion-Drift ./cmd/dandeliondrift
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+            go build -trimpath -ldflags='-s -w' \
+            -o release/arm64/Dandelion-Drift ./cmd/dandeliondrift
+          chmod +x release/x86_64/Dandelion-Drift release/arm64/Dandelion-Drift
+          file release/x86_64/Dandelion-Drift release/arm64/Dandelion-Drift
+
+      - name: Compress x86-64 executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 \
+            -o upx.tar.xz \
+            https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz
+          tar -xf upx.tar.xz
+          sudo install -m 0755 upx-4.2.4-amd64_linux/upx /usr/local/bin/upx
+          upx --best --lzma release/x86_64/Dandelion-Drift
+          chmod +x release/x86_64/Dandelion-Drift
+
+      - name: Launch-test production x86-64 executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LIBGL_ALWAYS_SOFTWARE=1
+          set +e
+          timeout 5s xvfb-run -a ./release/x86_64/Dandelion-Drift >release-launch.log 2>&1
+          rc=$?
+          set -e
+          cat release-launch.log
+          if [ "$rc" -ne 124 ]; then
+            echo "Release executable exited unexpectedly with code $rc"
+            exit "$rc"
+          fi
+          echo "Release launch gate passed."
+
+      - name: Package release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -C release/x86_64 -czf Dandelion-Drift-v0.1.0-linux-x86_64.tar.gz Dandelion-Drift
+          tar -C release/arm64 -czf Dandelion-Drift-v0.1.0-linux-arm64.tar.gz Dandelion-Drift
+          mkdir verify-x86 verify-arm
+          tar -C verify-x86 -xzf Dandelion-Drift-v0.1.0-linux-x86_64.tar.gz
+          tar -C verify-arm -xzf Dandelion-Drift-v0.1.0-linux-arm64.tar.gz
+          test -x verify-x86/Dandelion-Drift
+          test -x verify-arm/Dandelion-Drift
+          file verify-x86/Dandelion-Drift verify-arm/Dandelion-Drift
+          sha256sum \
+            Dandelion-Drift-v0.1.0-linux-x86_64.tar.gz \
+            Dandelion-Drift-v0.1.0-linux-arm64.tar.gz \
+            > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload production release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dandelion-Drift-v0.1.0-release
+          path: |
+            Dandelion-Drift-v0.1.0-linux-x86_64.tar.gz
+            Dandelion-Drift-v0.1.0-linux-arm64.tar.gz
+            SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30

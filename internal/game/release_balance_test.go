@@ -2,7 +2,7 @@ package game
 
 import "testing"
 
-func TestFinalUATStartsAtFiftyPuffs(t *testing.T) {
+func TestReleaseStartsAtFiftyPuffs(t *testing.T) {
 	if MaxSeeds != 50 {
 		t.Fatalf("MaxSeeds=%d want 50", MaxSeeds)
 	}
