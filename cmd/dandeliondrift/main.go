@@ -33,7 +33,11 @@ type seedParticle struct {
 type app struct {
 	game *game.Game
 
-	bunny [4]*ebiten.Image
+	bunny   [4]*ebiten.Image
+	bee     [2]*ebiten.Image
+	frog    [2]*ebiten.Image
+	thistle *ebiten.Image
+	flower  *ebiten.Image
 
 	titleFace   font.Face
 	headingFace font.Face
@@ -120,6 +124,26 @@ func (a *app) loadAssets() error {
 	for i := range a.bunny {
 		r := image.Rect(i*100, 0, (i+1)*100, 100)
 		a.bunny[i] = sheet.SubImage(r).(*ebiten.Image)
+	}
+	beeSheet, err := loadImage("assets/bee.b64")
+	if err != nil {
+		return err
+	}
+	for i := range a.bee {
+		a.bee[i] = beeSheet.SubImage(image.Rect(i*64, 0, (i+1)*64, 64)).(*ebiten.Image)
+	}
+	frogSheet, err := loadImage("assets/frog.b64")
+	if err != nil {
+		return err
+	}
+	for i := range a.frog {
+		a.frog[i] = frogSheet.SubImage(image.Rect(i*64, 0, (i+1)*64, 64)).(*ebiten.Image)
+	}
+	if a.thistle, err = loadImage("assets/thistle.b64"); err != nil {
+		return err
+	}
+	if a.flower, err = loadImage("assets/flower.b64"); err != nil {
+		return err
 	}
 	return nil
 }

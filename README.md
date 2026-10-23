@@ -8,9 +8,9 @@ A bunny floats beneath a dandelion puff. Every flap releases a seed, so the same
 
 ## Build status
 
-**V0.1 — Chunk 2 complete.**
+**V0.1 — Chunk 3 complete.**
 
-The second coherent build retains the complete lifecycle and adds the core Dandelion Drift resource loop:
+The third coherent build retains the complete lifecycle and resource loop, then adds the pressure and scoring layer:
 
 - polished attract/start scene;
 - full-screen 960×720 logical playfield with aspect preservation;
@@ -28,9 +28,18 @@ The second coherent build retains the complete lifecycle and adds the core Dande
 - flap take-off and automatic hop when a perch reaches the left edge;
 - one gameplay planter for every four released seeds;
 - grass-only planting, sprouts, delayed bloom and a six-flower planted cap;
-- conservative generated flower spacing proved against the full-puff glide limit.
+- conservative generated flower spacing proved against the full-puff glide limit;
+- bees with deterministic bobbing, three-seed knocks and brief pushback;
+- thistles, ponds/water knocks and low-overhead frog leaps;
+- updraft and downdraft gust zones;
+- one-second knock protection, with grass/water bounce preserved while guarded;
+- collectible fireflies with a two-second chain window and multiplier capped at ×5;
+- total score = metres + firefly points;
+- richer deterministic chunk catalogue whose pressure increases with distance;
+- long-run generation tests for gentle opening, reachable flowers, clear approaches, passable bee lanes, bounded ponds and live-entity budget;
+- the final bee, thistle, flower and frog art integrated at gameplay resolution.
 
-Hazards, fireflies/scoring, persistent high scores, sound and final presentation effects remain later chunks. They are not represented by temporary systems here.
+Persistent high scores, sound and the final effects/UAT polish pass remain later chunks. They are not represented by temporary systems here.
 
 ## Controls
 

@@ -45,9 +45,24 @@ const (
 	SproutTicks = 240
 	MaxPlanted  = 6
 
-	GroundSeeds = 1
-	GuardTicks  = 60
-	BounceVY    = -2.5
+	BeeSeeds       = 3
+	ThistleSeeds   = 3
+	GroundSeeds    = 1
+	WaterSeeds     = 4
+	FrogSeeds      = 6
+	GuardTicks     = 60
+	FrogGuard      = 90
+	BounceVY       = -2.5
+	SplashVY       = -3.5
+	FlingVY        = -4.0
+	BeePushTicks   = 10
+	FrogLeapWait   = 150
+	UpdraftForce   = -0.06
+	DowndraftForce = 0.05
+
+	ChainWindow   = 120
+	ChainMax      = 5
+	FireflyPoints = 10
 
 	EndTicks = 180
 )
@@ -81,72 +96,82 @@ const (
 	EvRegrow
 	EvTakeOff
 	EvSprouted
+	EvBee
+	EvThistle
+	EvSplash
+	EvFrogLeap
+	EvFrogCatch
+	EvFirefly
 )
 
 type Event struct {
 	Type  EventType
 	Value int
 }
-
 type Input struct {
 	Flap        bool
 	Left, Right bool
 }
 
 type Bunny struct {
-	SX, Y  float64
-	VX, VY float64
-	State  BunnyState
-	Guard  int
-
+	SX, Y        float64
+	VX, VY       float64
+	State        BunnyState
+	Guard        int
+	PushTicks    int
 	Perch        int
 	RegrowTimer  int
 	FlapCooldown int
 }
 
 type Flower struct {
-	X, Height float64
-	Nectar    int
-	Planted   bool
-	Bloomed   bool
-	GrowTicks int
+	X, Height        float64
+	Nectar           int
+	Planted, Bloomed bool
+	GrowTicks        int
 }
-
-type Planter struct {
-	X, Y   float64
-	VX, VY float64
+type Planter struct{ X, Y, VX, VY float64 }
+type Bee struct{ X, BaseY, Phase float64 }
+type Thistle struct{ X, Height float64 }
+type Frog struct {
+	X, Y, VY float64
+	Leaping  bool
+	LastLeap int
 }
-
 type Pond struct {
 	X, Width float64
+	Frog     Frog
+}
+type Gust struct{ X, Width, Force float64 }
+type Firefly struct {
+	X, Y      float64
+	Collected bool
 }
 
 type Game struct {
-	Screen Screen
-
-	Camera float64
-	Scroll float64
-
-	Bunny Bunny
-	Seeds int
-
-	Flowers  []Flower
-	Planters []Planter
-	Ponds    []Pond
-
-	Released int
-	Score    int
-	Metres   int
-	Ticks    int
-
-	EndTicks int
-	Events   []Event
-
-	baseSeed        int64
-	flight          int64
-	rng             *rand.Rand
-	genX            float64
-	lastChunkWasGap bool
+	Screen               Screen
+	Camera, Scroll       float64
+	Bunny                Bunny
+	Seeds                int
+	Flowers              []Flower
+	Planters             []Planter
+	Bees                 []Bee
+	Thistles             []Thistle
+	Ponds                []Pond
+	Gusts                []Gust
+	Fireflies            []Firefly
+	Released             int
+	Chain, ChainTicks    int
+	FireflyScore         int
+	FirefliesCollected   int
+	Score, Metres, Ticks int
+	EndTicks             int
+	Events               []Event
+	baseSeed, flight     int64
+	rng                  *rand.Rand
+	genX                 float64
+	lastFlowerX          float64
+	lastChunk            chunkKind
 }
 
 func New(seed int64) *Game {
@@ -157,22 +182,24 @@ func New(seed int64) *Game {
 }
 
 func (g *Game) resetFlight(seed int64) {
-	g.Camera = 0
-	g.Scroll = ScrollStart
+	g.Camera, g.Scroll = 0, ScrollStart
 	g.Bunny = Bunny{SX: 260, Y: 340, State: Flying, Perch: -1}
 	g.Seeds = MaxSeeds
 	g.Flowers = g.Flowers[:0]
 	g.Planters = g.Planters[:0]
+	g.Bees = g.Bees[:0]
+	g.Thistles = g.Thistles[:0]
 	g.Ponds = g.Ponds[:0]
-	g.Released = 0
-	g.Score = 0
-	g.Metres = 0
-	g.Ticks = 0
-	g.EndTicks = 0
+	g.Gusts = g.Gusts[:0]
+	g.Fireflies = g.Fireflies[:0]
+	g.Released, g.Chain, g.ChainTicks, g.FireflyScore = 0, 0, 0, 0
+	g.FirefliesCollected = 0
+	g.Score, g.Metres, g.Ticks, g.EndTicks = 0, 0, 0, 0
 	g.Events = g.Events[:0]
 	g.rng = rand.New(rand.NewSource(seed))
 	g.genX = 0
-	g.lastChunkWasGap = false
+	g.lastFlowerX = 0
+	g.lastChunk = chunkMeadow
 	g.seedInitialWorld()
 	g.generateWorldAhead()
 }
@@ -186,14 +213,12 @@ func (g *Game) StartFlight() {
 
 func (g *Game) Update(in Input) {
 	g.Events = g.Events[:0]
-
 	if g.Screen == Attract {
 		if in.Flap {
 			g.StartFlight()
 		}
 		return
 	}
-
 	if g.Bunny.State == Landed {
 		if g.EndTicks > 0 {
 			g.EndTicks--
@@ -206,15 +231,23 @@ func (g *Game) Update(in Input) {
 	}
 
 	g.Ticks++
+	if g.ChainTicks > 0 {
+		g.ChainTicks--
+		if g.ChainTicks == 0 {
+			g.Chain = 0
+		}
+	}
 	g.Scroll = ScrollStart + (ScrollMax-ScrollStart)*math.Min(1, g.Camera/ScrollRamp)
 	g.Camera += g.Scroll
 	g.generateWorldAhead()
-
 	if g.Bunny.Guard > 0 {
 		g.Bunny.Guard--
 	}
 	if g.Bunny.FlapCooldown > 0 {
 		g.Bunny.FlapCooldown--
+	}
+	if g.Bunny.PushTicks > 0 {
+		g.Bunny.PushTicks--
 	}
 
 	g.applyInput(in)
@@ -223,14 +256,20 @@ func (g *Game) Update(in Input) {
 	} else {
 		g.moveBunny()
 	}
-
 	g.updatePlanters()
 	g.updateSprouts()
+	g.updateBees()
+	g.updateFrogs()
 
 	if g.Bunny.State == Flying {
 		g.resolvePerch()
 	}
-	if g.Bunny.State != Perched {
+	hitThistle := false
+	if g.Bunny.State == Flying {
+		hitThistle = g.resolveHazards()
+		g.resolveFireflies()
+	}
+	if g.Bunny.State != Perched && !hitThistle {
 		g.resolveGround()
 	}
 
@@ -239,36 +278,30 @@ func (g *Game) Update(in Input) {
 		g.Bunny.Perch = -1
 		g.Events = append(g.Events, Event{Type: EvPuffGone})
 	}
-
 	g.Metres = int(math.Floor(g.Camera / PxPerMetre))
-	g.Score = g.Metres
+	g.Score = g.Metres + g.FireflyScore
 	g.pruneWorld()
 }
 
 func (g *Game) applyInput(in Input) {
-	if in.Left == in.Right || g.Bunny.State == Perched {
+	if g.Bunny.PushTicks > 0 {
+		g.Bunny.VX = -2
+	} else if in.Left == in.Right || g.Bunny.State == Perched {
 		g.Bunny.VX = 0
 	} else if in.Left {
 		g.Bunny.VX = -DriftSpeed
 	} else {
 		g.Bunny.VX = DriftSpeed
 	}
-
 	if !in.Flap || (g.Bunny.State != Flying && g.Bunny.State != Perched) || g.Seeds <= 0 || g.Bunny.FlapCooldown != 0 {
 		return
 	}
-
 	lift := LiftForSeeds(g.Seeds)
 	g.Bunny.VY = math.Max(MaxRise, g.Bunny.VY-FlapImpulse*lift)
 	g.Seeds--
 	g.Released++
 	if g.Released%PlantEvery == 0 && len(g.Planters) < MaxPlanted {
-		g.Planters = append(g.Planters, Planter{
-			X:  g.Camera + g.Bunny.SX,
-			Y:  g.Bunny.Y - 65,
-			VX: PlanterVX,
-			VY: PlanterVY,
-		})
+		g.Planters = append(g.Planters, Planter{X: g.Camera + g.Bunny.SX, Y: g.Bunny.Y - 65, VX: PlanterVX, VY: PlanterVY})
 	}
 	if g.Bunny.State == Perched {
 		g.Bunny.State = Flying
@@ -282,17 +315,17 @@ func (g *Game) applyInput(in Input) {
 
 func (g *Game) moveBunny() {
 	maxFall := MaxFallStem
+	gravity := Gravity
 	if g.Bunny.State == Flying {
 		maxFall = MaxFallForSeeds(g.Seeds)
+		gravity += g.gustAtBunny()
 	}
-
-	g.Bunny.VY = math.Min(maxFall, g.Bunny.VY+Gravity)
+	g.Bunny.VY = math.Min(maxFall, g.Bunny.VY+gravity)
 	g.Bunny.Y += g.Bunny.VY
 	if g.Bunny.Y < Ceiling {
 		g.Bunny.Y = Ceiling
 		g.Bunny.VY = 0
 	}
-
 	g.Bunny.SX += g.Bunny.VX
 	if g.Bunny.SX < MinSX {
 		g.Bunny.SX = MinSX
@@ -340,17 +373,15 @@ func (g *Game) updatePerched() {
 	g.Bunny.SX = f.X - g.Camera
 	g.Bunny.Y = GroundY - f.Height - FlowerRadius - BunnyFeet
 	g.Bunny.VY = 0
-
 	if g.Bunny.SX < MinSX {
 		g.Bunny.SX = MinSX
 		g.Bunny.State = Flying
 		g.Bunny.Perch = -1
 		g.Bunny.RegrowTimer = 0
-		g.Bunny.VY = -2.0
+		g.Bunny.VY = -2
 		g.Events = append(g.Events, Event{Type: EvTakeOff})
 		return
 	}
-
 	if g.Seeds >= MaxSeeds || f.Nectar <= 0 {
 		g.Bunny.RegrowTimer = 0
 		return
@@ -365,9 +396,6 @@ func (g *Game) updatePerched() {
 }
 
 func (g *Game) updatePlanters() {
-	if len(g.Planters) == 0 {
-		return
-	}
 	out := g.Planters[:0]
 	for i := range g.Planters {
 		p := g.Planters[i]
@@ -380,19 +408,11 @@ func (g *Game) updatePlanters() {
 		if !g.canPlantAt(p.X) || g.plantedFlowerCount() >= MaxPlanted {
 			continue
 		}
-		height := 90.0 + float64((g.Released+i*17)%51)
-		g.Flowers = append(g.Flowers, Flower{
-			X:         p.X,
-			Height:    height,
-			Nectar:    NectarPlanted,
-			Planted:   true,
-			Bloomed:   false,
-			GrowTicks: SproutTicks,
-		})
+		h := 90 + float64((g.Released+i*17)%51)
+		g.Flowers = append(g.Flowers, Flower{X: p.X, Height: h, Nectar: NectarPlanted, Planted: true, GrowTicks: SproutTicks})
 	}
 	g.Planters = out
 }
-
 func (g *Game) updateSprouts() {
 	for i := range g.Flowers {
 		f := &g.Flowers[i]
@@ -406,10 +426,14 @@ func (g *Game) updateSprouts() {
 		}
 	}
 }
-
 func (g *Game) canPlantAt(x float64) bool {
 	for _, p := range g.Ponds {
 		if x >= p.X && x <= p.X+p.Width {
+			return false
+		}
+	}
+	for _, t := range g.Thistles {
+		if math.Abs(t.X-x) < 35 {
 			return false
 		}
 	}
@@ -420,7 +444,6 @@ func (g *Game) canPlantAt(x float64) bool {
 	}
 	return true
 }
-
 func (g *Game) plantedFlowerCount() int {
 	n := 0
 	for _, f := range g.Flowers {
@@ -431,11 +454,72 @@ func (g *Game) plantedFlowerCount() int {
 	return n
 }
 
+func (g *Game) updateBees() {
+	for i := range g.Bees {
+		g.Bees[i].X -= 1.0
+	}
+}
+func (g *Game) BeeY(b Bee) float64 { return b.BaseY + 30*math.Sin(float64(g.Ticks)/30+b.Phase) }
+func (g *Game) updateFrogs() {
+	for i := range g.Ponds {
+		p := &g.Ponds[i]
+		f := &p.Frog
+		f.X = p.X + p.Width/2
+		if !f.Leaping {
+			if g.Bunny.State == Flying && math.Abs((g.Camera+g.Bunny.SX)-f.X) <= 80 && g.Bunny.Y > GroundY-180 && g.Ticks-f.LastLeap >= FrogLeapWait {
+				f.Leaping = true
+				f.Y = GroundY - 18
+				f.VY = -6
+				f.LastLeap = g.Ticks
+				g.Events = append(g.Events, Event{Type: EvFrogLeap})
+			}
+			continue
+		}
+		f.VY += 0.25
+		f.Y += f.VY
+		if f.Y >= GroundY-18 {
+			f.Y = GroundY - 18
+			f.VY = 0
+			f.Leaping = false
+		}
+	}
+}
+
+func (g *Game) resolveHazards() bool {
+	wx := g.Camera + g.Bunny.SX
+	for _, b := range g.Bees {
+		if circleHit(g.Bunny.SX, g.Bunny.Y, 25, b.X-g.Camera, g.BeeY(b), 18) || (g.Seeds > 0 && circleHit(g.Bunny.SX, g.Bunny.Y-60, 30, b.X-g.Camera, g.BeeY(b), 18)) {
+			if g.knock(BeeSeeds, GuardTicks, EvBee) {
+				g.Bunny.PushTicks = BeePushTicks
+			}
+			break
+		}
+	}
+	for _, t := range g.Thistles {
+		if math.Abs(wx-t.X) <= 30 && g.Bunny.Y+BunnyFeet >= GroundY-t.Height {
+			if g.knock(ThistleSeeds, GuardTicks, EvThistle) {
+				g.Bunny.VY = BounceVY
+				g.Bunny.Y = math.Min(g.Bunny.Y, GroundY-t.Height-BunnyFeet)
+				return true
+			}
+		}
+	}
+	for i := range g.Ponds {
+		f := &g.Ponds[i].Frog
+		if f.Leaping && circleHit(g.Bunny.SX, g.Bunny.Y, 25, f.X-g.Camera, f.Y, 24) {
+			if g.knock(FrogSeeds, FrogGuard, EvFrogCatch) {
+				g.Bunny.VY = FlingVY
+			}
+			break
+		}
+	}
+	return false
+}
+
 func (g *Game) resolveGround() {
 	if g.Bunny.Y+BunnyFeet < GroundY {
 		return
 	}
-
 	g.Bunny.Y = GroundY - BunnyFeet
 	if g.Bunny.State == Falling {
 		g.Bunny.VY = 0
@@ -444,31 +528,86 @@ func (g *Game) resolveGround() {
 		g.Events = append(g.Events, Event{Type: EvFlightOver})
 		return
 	}
-
+	wx := g.Camera + g.Bunny.SX
+	for _, p := range g.Ponds {
+		if wx >= p.X && wx <= p.X+p.Width {
+			g.Bunny.VY = SplashVY
+			if g.Bunny.Guard > 0 {
+				g.Events = append(g.Events, Event{Type: EvSplash})
+			} else {
+				g.knock(WaterSeeds, GuardTicks, EvSplash)
+			}
+			return
+		}
+	}
 	g.Bunny.VY = BounceVY
-	g.Events = append(g.Events, Event{Type: EvBounce})
-	if g.Bunny.Guard == 0 && g.Seeds > 0 {
-		lost := min(GroundSeeds, g.Seeds)
-		g.Seeds -= lost
-		g.Bunny.Guard = GuardTicks
-		g.Events = append(g.Events, Event{Type: EvSeedsLost, Value: lost})
+	if g.Bunny.Guard > 0 {
+		g.Events = append(g.Events, Event{Type: EvBounce})
+	} else {
+		g.knock(GroundSeeds, GuardTicks, EvBounce)
 	}
 }
 
-func LiftForSeeds(seeds int) float64 {
-	f := clampSeeds(seeds) / float64(MaxSeeds)
-	return 0.45 + 0.55*f
+func (g *Game) knock(n, guard int, ev EventType) bool {
+	if g.Bunny.Guard > 0 || g.Seeds <= 0 {
+		return false
+	}
+	lost := min(n, g.Seeds)
+	g.Seeds -= lost
+	g.Bunny.Guard = guard
+	g.Events = append(g.Events, Event{Type: ev}, Event{Type: EvSeedsLost, Value: lost})
+	return true
+}
+func circleHit(x1, y1, r1, x2, y2, r2 float64) bool {
+	dx := x1 - x2
+	dy := y1 - y2
+	rr := r1 + r2
+	return dx*dx+dy*dy <= rr*rr
+}
+func (g *Game) gustAtBunny() float64 {
+	wx := g.Camera + g.Bunny.SX
+	for _, u := range g.Gusts {
+		if wx >= u.X && wx <= u.X+u.Width {
+			return u.Force
+		}
+	}
+	return 0
 }
 
+func (g *Game) resolveFireflies() {
+	for i := range g.Fireflies {
+		f := &g.Fireflies[i]
+		if f.Collected {
+			continue
+		}
+		if !circleHit(g.Bunny.SX, g.Bunny.Y, 25, f.X-g.Camera, f.Y, 20) {
+			continue
+		}
+		f.Collected = true
+		if g.ChainTicks > 0 {
+			g.Chain = min(ChainMax, g.Chain+1)
+		} else {
+			g.Chain = 1
+		}
+		g.ChainTicks = ChainWindow
+		pts := FireflyPoints * g.Chain
+		g.FireflyScore += pts
+		g.FirefliesCollected++
+		g.Events = append(g.Events, Event{Type: EvFirefly, Value: g.Chain})
+	}
+}
+
+func LiftForSeeds(seeds int) float64 { f := clampSeeds(seeds) / float64(MaxSeeds); return .45 + .55*f }
 func MaxFallForSeeds(seeds int) float64 {
 	f := clampSeeds(seeds) / float64(MaxSeeds)
 	return MaxFallFull + (MaxFallEmpty-MaxFallFull)*(1-f)
 }
-
-func MaxFlowerGap(scroll float64) float64 {
-	return 0.8 * (GroundY - Ceiling - 90) / MaxFallFull * scroll
+func ScrollAtWorldX(x float64) float64 {
+	return ScrollStart + (ScrollMax-ScrollStart)*math.Min(1, math.Max(0, x)/ScrollRamp)
 }
-
+func MaxFlowerGap(scroll float64) float64 {
+	return .8 * (GroundY - Ceiling - 90) / MaxFallFull * scroll
+}
 func clampSeeds(seeds int) float64 {
 	if seeds < 0 {
 		return 0

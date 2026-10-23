@@ -1,6 +1,9 @@
 package game
 
-import "testing"
+import (
+	"sort"
+	"testing"
+)
 
 func TestStartScreenSpaceStartsFlightWithoutSpendingSeed(t *testing.T) {
 	g := New(1)
@@ -371,16 +374,20 @@ func TestGeneratedFlowersStayWithinReach(t *testing.T) {
 	g.StartFlight()
 	g.Camera = 120000
 	g.generateWorldAhead()
-	maxGap := MaxFlowerGap(ScrollStart)
-	var last float64
-	for i, f := range g.Flowers {
-		if !f.Bloomed || f.Planted {
-			continue
+	var xs []float64
+	for _, f := range g.Flowers {
+		if f.Bloomed && !f.Planted {
+			xs = append(xs, f.X)
 		}
-		if i > 0 && last != 0 && f.X-last > maxGap+0.001 {
-			t.Fatalf("flower gap %.1f exceeds conservative max %.1f at x=%.1f", f.X-last, maxGap, f.X)
+	}
+	sort.Float64s(xs)
+	for i := 1; i < len(xs); i++ {
+		mid := (xs[i-1] + xs[i]) / 2
+		scroll := ScrollStart + (ScrollMax-ScrollStart)*min(1.0, mid/ScrollRamp)
+		maxGap := MaxFlowerGap(scroll)
+		if xs[i]-xs[i-1] > maxGap+0.001 {
+			t.Fatalf("flower gap %.1f exceeds max %.1f around x=%.1f", xs[i]-xs[i-1], maxGap, mid)
 		}
-		last = f.X
 	}
 }
 
@@ -399,5 +406,24 @@ func TestPlantersAreBounded(t *testing.T) {
 	}
 	if len(g.Planters) > MaxPlanted {
 		t.Fatalf("planters=%d cap=%d", len(g.Planters), MaxPlanted)
+	}
+}
+
+func TestGuardSuppressesThistleBounce(t *testing.T) {
+	g := New(1)
+	g.StartFlight()
+	g.Flowers = nil
+	g.Thistles = []Thistle{{X: g.Camera + g.Bunny.SX, Height: 180}}
+	g.Bunny.Y = GroundY - 100
+	g.Bunny.VY = 0.5
+	g.Bunny.Guard = 20
+	beforeSeeds := g.Seeds
+	beforeVY := g.Bunny.VY
+	g.resolveHazards()
+	if g.Seeds != beforeSeeds {
+		t.Fatalf("guarded thistle changed seeds: %d -> %d", beforeSeeds, g.Seeds)
+	}
+	if g.Bunny.VY != beforeVY {
+		t.Fatalf("guarded thistle changed vy: %v -> %v", beforeVY, g.Bunny.VY)
 	}
 }

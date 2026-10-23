@@ -39,8 +39,11 @@ func (a *app) drawAttract(screen *ebiten.Image) {
 
 func (a *app) drawPlay(screen *ebiten.Image) {
 	b := a.game.Bunny
+	a.drawWorldPressure(screen)
 	a.drawFlowers(screen)
 	a.drawPlanters(screen)
+	a.drawFireflies(screen)
+	a.drawHazardSprites(screen)
 
 	frame := 0
 	if b.State == game.Perched {
@@ -53,7 +56,10 @@ func (a *app) drawPlay(screen *ebiten.Image) {
 		frame = 1
 	}
 
-	a.drawBunnySprite(screen, frame, b.SX, b.Y, 0.92)
+	blinkVisible := b.Guard == 0 || (a.frame/4)%2 == 0
+	if blinkVisible {
+		a.drawBunnySprite(screen, frame, b.SX, b.Y, 0.92)
+	}
 	if a.game.Seeds > 0 {
 		a.drawPuff(screen, b.SX, b.Y-76, a.game.Seeds, 0.78)
 		ebitenutil.DrawLine(screen, b.SX, b.Y-56, b.SX-5, b.Y-18, color.RGBA{84, 112, 56, 235})
@@ -78,11 +84,14 @@ func (a *app) drawPlay(screen *ebiten.Image) {
 func (a *app) drawHUD(screen *ebiten.Image) {
 	dark := color.RGBA{46, 73, 54, 220}
 	cream := color.RGBA{255, 252, 233, 235}
-	drawRoundedPanel(screen, 22, 20, 196, 52, cream, color.RGBA{94, 143, 93, 210})
-	drawStyledCentered(screen, a.labelFace, fmt.Sprintf("%04d m", a.game.Metres), 120, 53, dark, color.RGBA{}, color.RGBA{})
+	drawRoundedPanel(screen, 22, 20, 210, 58, cream, color.RGBA{94, 143, 93, 210})
+	drawStyledCentered(screen, a.labelFace, fmt.Sprintf("%04d m   %05d", a.game.Metres, a.game.Score), 127, 55, dark, color.RGBA{}, color.RGBA{})
 
-	// The puff is the health display, but this tiny seed row makes development/UAT state visible
-	// without turning into a second health system.
+	if a.game.Chain > 1 && a.game.ChainTicks > 0 {
+		drawRoundedPanel(screen, 420, 20, 120, 58, color.RGBA{255, 249, 210, 225}, color.RGBA{198, 164, 75, 220})
+		drawStyledCentered(screen, a.headingFace, fmt.Sprintf("x%d", a.game.Chain), 480, 58, color.RGBA{126, 94, 36, 255}, color.RGBA{}, color.RGBA{})
+	}
+
 	for i := 0; i < game.MaxSeeds; i++ {
 		c := color.RGBA{246, 245, 223, 80}
 		if i < a.game.Seeds {
@@ -111,8 +120,9 @@ func (a *app) drawEndScreen(screen *ebiten.Image) {
 	}
 
 	drawStyledCentered(screen, a.headingFace, "A GENTLE LANDING", game.LogicalWidth/2, 220, green, color.RGBA{255, 255, 255, 210}, color.RGBA{})
-	drawStyledCentered(screen, a.titleFace, fmt.Sprintf("%d m", a.game.Metres), game.LogicalWidth/2, 310, pink, color.RGBA{119, 139, 100, 150}, color.RGBA{})
-	drawStyledCentered(screen, a.labelFace, fmt.Sprintf("%d seeds carried on the wind", a.game.Released), game.LogicalWidth/2, 360, muted, color.RGBA{}, color.RGBA{})
+	drawStyledCentered(screen, a.titleFace, fmt.Sprintf("%d", a.game.Score), game.LogicalWidth/2, 302, pink, color.RGBA{119, 139, 100, 150}, color.RGBA{})
+	drawStyledCentered(screen, a.labelFace, fmt.Sprintf("%d m   •   %d fireflies", a.game.Metres, a.game.FirefliesCollected), game.LogicalWidth/2, 348, muted, color.RGBA{}, color.RGBA{})
+	drawStyledCentered(screen, a.labelFace, fmt.Sprintf("%d seeds carried on the wind", a.game.Released), game.LogicalWidth/2, 380, muted, color.RGBA{}, color.RGBA{})
 
 	remaining := (a.game.EndTicks + game.TPS - 1) / game.TPS
 	message := "Returning to the meadow..."
@@ -123,7 +133,7 @@ func (a *app) drawEndScreen(screen *ebiten.Image) {
 
 	for i := 0; i < 3; i++ {
 		c := color.RGBA{195, 214, 174, 170}
-		if i < (game.EndTicks/(game.TPS) + 1) {
+		if i < (a.game.EndTicks/(game.TPS) + 1) {
 			c = color.RGBA{84, 142, 91, 220}
 		}
 		vector.DrawFilledCircle(screen, float32(456+i*24), 486, 4, c, true)
