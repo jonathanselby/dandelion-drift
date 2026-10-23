@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"os"
+	"path/filepath"
+	"runtime"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/jonathanselby/dandelion-drift/internal/game"
@@ -44,7 +47,12 @@ var cueSpecs = map[string]cueSpec{
 }
 
 func loadSoundBank() *soundBank {
-	bank := &soundBank{context: audio.NewContext(soundSampleRate), players: map[string]*audio.Player{}}
+	bank := &soundBank{players: map[string]*audio.Player{}}
+	if !audioDeviceLikelyAvailable() {
+		log.Printf("audio device unavailable; continuing silently")
+		return bank
+	}
+	bank.context = audio.NewContext(soundSampleRate)
 	for name := range cueSpecs {
 		pcm, err := cuePCM(name)
 		if err != nil {
@@ -54,6 +62,24 @@ func loadSoundBank() *soundBank {
 		bank.players[name] = bank.context.NewPlayerFromBytes(pcm)
 	}
 	return bank
+}
+
+func audioDeviceLikelyAvailable() bool {
+	if runtime.GOOS != "linux" {
+		return true
+	}
+	if os.Getenv("PULSE_SERVER") != "" {
+		return true
+	}
+	if runtimeDir := os.Getenv("XDG_RUNTIME_DIR"); runtimeDir != "" {
+		if _, err := os.Stat(filepath.Join(runtimeDir, "pulse", "native")); err == nil {
+			return true
+		}
+	}
+	if _, err := os.Stat("/dev/snd"); err == nil {
+		return true
+	}
+	return false
 }
 
 func cuePCM(name string) ([]byte, error) {
@@ -71,7 +97,6 @@ func cuePCM(name string) ([]byte, error) {
 		progress := float64(i) / float64(frames)
 		envelope := math.Sin(math.Pi * progress)
 		wave := math.Sin(2 * math.Pi * spec.frequency * t)
-		// A quiet second harmonic keeps the cues warm rather than arcade-sharp.
 		wave += 0.22 * math.Sin(4*math.Pi*spec.frequency*t)
 		sample := int16(math.Max(-1, math.Min(1, wave*envelope*spec.volume)) * 32767)
 		binary.LittleEndian.PutUint16(pcm[i*4:i*4+2], uint16(sample))
