@@ -1,13 +1,10 @@
 package main
 
 import (
-	"archive/zip"
-	"bytes"
-	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"log"
-	"strings"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/jonathanselby/dandelion-drift/internal/game"
@@ -20,19 +17,36 @@ type soundBank struct {
 	players map[string]*audio.Player
 }
 
+type cueSpec struct {
+	frequency float64
+	duration  float64
+	volume    float64
+}
+
+var cueSpecs = map[string]cueSpec{
+	"flap":       {frequency: 520, duration: 0.07, volume: 0.20},
+	"perch":      {frequency: 720, duration: 0.10, volume: 0.18},
+	"regrow":     {frequency: 880, duration: 0.09, volume: 0.16},
+	"bee":        {frequency: 180, duration: 0.12, volume: 0.20},
+	"thistle":    {frequency: 240, duration: 0.10, volume: 0.20},
+	"bounce":     {frequency: 330, duration: 0.08, volume: 0.16},
+	"splash":     {frequency: 210, duration: 0.16, volume: 0.18},
+	"frog_leap":  {frequency: 300, duration: 0.11, volume: 0.18},
+	"frog_catch": {frequency: 150, duration: 0.16, volume: 0.22},
+	"puff":       {frequency: 460, duration: 0.18, volume: 0.14},
+	"landing":    {frequency: 390, duration: 0.16, volume: 0.16},
+	"highscore":  {frequency: 980, duration: 0.22, volume: 0.18},
+	"firefly1":   {frequency: 660, duration: 0.08, volume: 0.16},
+	"firefly2":   {frequency: 740, duration: 0.08, volume: 0.16},
+	"firefly3":   {frequency: 830, duration: 0.08, volume: 0.16},
+	"firefly4":   {frequency: 930, duration: 0.08, volume: 0.16},
+	"firefly5":   {frequency: 1040, duration: 0.10, volume: 0.18},
+}
+
 func loadSoundBank() *soundBank {
 	bank := &soundBank{context: audio.NewContext(soundSampleRate), players: map[string]*audio.Player{}}
-	archive, err := loadSoundArchive("assets/sounds.zip.b64")
-	if err != nil {
-		log.Printf("sound archive unavailable: %v", err)
-		return bank
-	}
-	for _, name := range []string{"flap", "perch", "regrow", "bee", "thistle", "bounce", "splash", "frog_leap", "frog_catch", "puff", "landing", "highscore", "firefly1", "firefly2", "firefly3", "firefly4", "firefly5"} {
-		wavData, ok := archive["sound_"+name+".wav"]
-		if !ok {
-			continue
-		}
-		pcm, err := monoWAVAsStereo(wavData)
+	for name := range cueSpecs {
+		pcm, err := cuePCM(name)
 		if err != nil {
 			log.Printf("sound %s unavailable: %v", name, err)
 			continue
@@ -42,75 +56,28 @@ func loadSoundBank() *soundBank {
 	return bank
 }
 
-func loadSoundArchive(path string) (map[string][]byte, error) {
-	raw, err := assetFS.ReadFile(path)
-	if err != nil {
-		return nil, err
+func cuePCM(name string) ([]byte, error) {
+	spec, ok := cueSpecs[name]
+	if !ok {
+		return nil, fmt.Errorf("unknown cue %q", name)
 	}
-	zipData, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
-	if err != nil {
-		return nil, err
+	frames := int(float64(soundSampleRate) * spec.duration)
+	if frames < 1 {
+		return nil, fmt.Errorf("invalid cue duration")
 	}
-	zr, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
-	if err != nil {
-		return nil, err
+	pcm := make([]byte, frames*4)
+	for i := 0; i < frames; i++ {
+		t := float64(i) / float64(soundSampleRate)
+		progress := float64(i) / float64(frames)
+		envelope := math.Sin(math.Pi * progress)
+		wave := math.Sin(2 * math.Pi * spec.frequency * t)
+		// A quiet second harmonic keeps the cues warm rather than arcade-sharp.
+		wave += 0.22 * math.Sin(4*math.Pi*spec.frequency*t)
+		sample := int16(math.Max(-1, math.Min(1, wave*envelope*spec.volume)) * 32767)
+		binary.LittleEndian.PutUint16(pcm[i*4:i*4+2], uint16(sample))
+		binary.LittleEndian.PutUint16(pcm[i*4+2:i*4+4], uint16(sample))
 	}
-	out := map[string][]byte{}
-	for _, f := range zr.File {
-		r, err := f.Open()
-		if err != nil {
-			return nil, err
-		}
-		buf := new(bytes.Buffer)
-		_, copyErr := buf.ReadFrom(r)
-		closeErr := r.Close()
-		if copyErr != nil {
-			return nil, copyErr
-		}
-		if closeErr != nil {
-			return nil, closeErr
-		}
-		out[f.Name] = buf.Bytes()
-	}
-	return out, nil
-}
-
-func monoWAVAsStereo(wavData []byte) ([]byte, error) {
-	if len(wavData) < 12 || string(wavData[:4]) != "RIFF" || string(wavData[8:12]) != "WAVE" {
-		return nil, fmt.Errorf("not RIFF/WAVE")
-	}
-	var formatOK bool
-	var mono []byte
-	for off := 12; off+8 <= len(wavData); {
-		id := string(wavData[off : off+4])
-		n := int(binary.LittleEndian.Uint32(wavData[off+4 : off+8]))
-		start := off + 8
-		end := start + n
-		if end > len(wavData) {
-			return nil, fmt.Errorf("truncated %s chunk", id)
-		}
-		switch id {
-		case "fmt ":
-			if n < 16 {
-				return nil, fmt.Errorf("short fmt chunk")
-			}
-			formatOK = binary.LittleEndian.Uint16(wavData[start:start+2]) == 1 && binary.LittleEndian.Uint16(wavData[start+2:start+4]) == 1 && binary.LittleEndian.Uint32(wavData[start+4:start+8]) == soundSampleRate && binary.LittleEndian.Uint16(wavData[start+14:start+16]) == 16
-		case "data":
-			mono = wavData[start:end]
-		}
-		off = end
-		if off%2 != 0 {
-			off++
-		}
-	}
-	if !formatOK || len(mono) == 0 || len(mono)%2 != 0 {
-		return nil, fmt.Errorf("must be 44.1 kHz mono PCM16")
-	}
-	stereo := make([]byte, 0, len(mono)*2)
-	for i := 0; i < len(mono); i += 2 {
-		stereo = append(stereo, mono[i], mono[i+1], mono[i], mono[i+1])
-	}
-	return stereo, nil
+	return pcm, nil
 }
 
 func (b *soundBank) playName(name string) {
@@ -166,13 +133,5 @@ func (b *soundBank) playEvent(ev game.Event) {
 		}
 		name = fmt.Sprintf("firefly%d", level)
 	}
-	p := b.players[name]
-	if p == nil {
-		return
-	}
-	if err := p.Rewind(); err != nil {
-		log.Printf("rewind sound %s: %v", name, err)
-		return
-	}
-	p.Play()
+	b.playName(name)
 }

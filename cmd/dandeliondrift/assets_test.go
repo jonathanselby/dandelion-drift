@@ -1,7 +1,6 @@
 package main
 
 import (
-	"archive/zip"
 	"bytes"
 	"encoding/base64"
 	"image"
@@ -40,20 +39,16 @@ func TestEmbeddedAssetsDecode(t *testing.T) {
 			t.Fatalf("image %s: %v", path, err)
 		}
 	}
+}
 
-	raw, err := assetFS.ReadFile("assets/sounds.zip.b64")
-	if err != nil {
-		t.Fatal(err)
-	}
-	zipData, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
-	if err != nil {
-		t.Fatalf("sound bundle base64: %v", err)
-	}
-	zr, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
-	if err != nil {
-		t.Fatalf("sound bundle zip: %v", err)
-	}
-	if len(zr.File) == 0 {
-		t.Fatal("sound bundle is empty")
+func TestProceduralSoundCues(t *testing.T) {
+	for name := range cueSpecs {
+		pcm, err := cuePCM(name)
+		if err != nil {
+			t.Fatalf("cue %s: %v", name, err)
+		}
+		if len(pcm) == 0 || len(pcm)%4 != 0 {
+			t.Fatalf("cue %s produced invalid stereo PCM length %d", name, len(pcm))
+		}
 	}
 }
