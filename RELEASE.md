@@ -23,7 +23,7 @@
 ## Evidence
 
 - [x] PRD acceptance criteria map to tests or observable play evidence.
-- [x] code-derived EDD is pinned to the final source commit `d93668ef91d7fc743e1ec4f56995240c97a23adb`.
+- [x] code-derived EDD is pinned to the final source commit `6c70eea985b58d6fe3511b26ba5b7c7d2d902dfa`.
 - [x] generated comparison records design/implementation matches and material corrections.
 - [x] design process is recorded in `DESIGN-NOTES.md`.
 - [x] automated, hardening, UAT and packaging/runtime failures are recorded in `TESTING.md`.

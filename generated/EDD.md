@@ -1,6 +1,6 @@
 # Dandelion Drift — Generated Engineering Design Document
 
-**Evidence commit:** `d93668ef91d7fc743e1ec4f56995240c97a23adb`  
+**Evidence commit:** `6c70eea985b58d6fe3511b26ba5b7c7d2d902dfa`  
 **Method:** code-derived review using the Jonno's Garage `codebase-to-EDD` evidence discipline  
 **Generated:** 2026-10-23
 

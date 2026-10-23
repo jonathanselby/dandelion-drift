@@ -1,6 +1,6 @@
 # Dandelion Drift — Design / Implementation Comparison
 
-**Implementation evidence:** `d93668ef91d7fc743e1ec4f56995240c97a23adb`  
+**Implementation evidence:** `6c70eea985b58d6fe3511b26ba5b7c7d2d902dfa`  
 **Generated:** 2026-10-23
 
 | Design area | Final contract | Recovered implementation | Assessment |
