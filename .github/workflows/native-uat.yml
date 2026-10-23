@@ -31,10 +31,10 @@ jobs:
           set -euo pipefail
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
             go build -trimpath -ldflags='-s -w' \
-            -o Dandelion-Drift-UAT-v0.1-linux-x86_64 ./cmd/dandeliondrift
-          chmod +x Dandelion-Drift-UAT-v0.1-linux-x86_64
-          file Dandelion-Drift-UAT-v0.1-linux-x86_64
-          sha256sum Dandelion-Drift-UAT-v0.1-linux-x86_64
+            -o Dandelion-Drift-UAT-v0.2-linux-x86_64 ./cmd/dandeliondrift
+          chmod +x Dandelion-Drift-UAT-v0.2-linux-x86_64
+          file Dandelion-Drift-UAT-v0.2-linux-x86_64
+          sha256sum Dandelion-Drift-UAT-v0.2-linux-x86_64
 
       - name: Install UPX
         shell: bash
@@ -51,11 +51,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          upx --best --lzma Dandelion-Drift-UAT-v0.1-linux-x86_64
-          chmod +x Dandelion-Drift-UAT-v0.1-linux-x86_64
-          file Dandelion-Drift-UAT-v0.1-linux-x86_64
-          du -h Dandelion-Drift-UAT-v0.1-linux-x86_64
-          test $(stat -c%s Dandelion-Drift-UAT-v0.1-linux-x86_64) -lt 7000000
+          upx --best --lzma Dandelion-Drift-UAT-v0.2-linux-x86_64
+          chmod +x Dandelion-Drift-UAT-v0.2-linux-x86_64
+          file Dandelion-Drift-UAT-v0.2-linux-x86_64
+          du -h Dandelion-Drift-UAT-v0.2-linux-x86_64
+          test $(stat -c%s Dandelion-Drift-UAT-v0.2-linux-x86_64) -lt 7000000
 
       - name: Launch test compressed executable
         shell: bash
@@ -63,7 +63,7 @@ jobs:
           set -euo pipefail
           export LIBGL_ALWAYS_SOFTWARE=1
           set +e
-          timeout 5s xvfb-run -a ./Dandelion-Drift-UAT-v0.1-linux-x86_64 >uat-launch.log 2>&1
+          timeout 5s xvfb-run -a ./Dandelion-Drift-UAT-v0.2-linux-x86_64 >uat-launch.log 2>&1
           rc=$?
           set -e
           cat uat-launch.log
@@ -76,7 +76,7 @@ jobs:
       - name: Upload native UAT executable
         uses: actions/upload-artifact@v4
         with:
-          name: Dandelion-Drift-UAT-v0.1-linux-x86_64
-          path: Dandelion-Drift-UAT-v0.1-linux-x86_64
+          name: Dandelion-Drift-UAT-v0.2-linux-x86_64
+          path: Dandelion-Drift-UAT-v0.2-linux-x86_64
           if-no-files-found: error
           retention-days: 30

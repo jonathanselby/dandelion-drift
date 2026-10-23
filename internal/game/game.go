@@ -16,7 +16,7 @@ const (
 	MinSX      = 120.0
 	MaxSX      = 600.0
 
-	MaxSeeds = 24
+	MaxSeeds = 240
 
 	ScrollStart = 1.5
 	ScrollMax   = 3.0
@@ -63,6 +63,7 @@ const (
 	ChainWindow   = 120
 	ChainMax      = 5
 	FireflyPoints = 10
+	FireflySeeds  = 24
 
 	EndTicks = 180
 )
@@ -593,6 +594,7 @@ func (g *Game) resolveFireflies() {
 		pts := FireflyPoints * g.Chain
 		g.FireflyScore += pts
 		g.FirefliesCollected++
+		g.Seeds = min(MaxSeeds, g.Seeds+FireflySeeds)
 		g.Events = append(g.Events, Event{Type: EvFirefly, Value: g.Chain})
 	}
 }

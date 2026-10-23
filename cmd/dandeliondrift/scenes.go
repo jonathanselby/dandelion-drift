@@ -22,7 +22,6 @@ func (a *app) drawAttract(screen *ebiten.Image) {
 	drawStyledCentered(screen, a.titleFace, "DANDELION", game.LogicalWidth/2, 96, cream, color.RGBA{97, 128, 92, 220}, dark)
 	drawStyledCentered(screen, a.titleFace, "DRIFT", game.LogicalWidth/2, 160, pink, color.RGBA{97, 128, 92, 210}, dark)
 
-	// High scores and the live demo share the meadow instead of creating a menu layer.
 	drawRoundedPanel(screen, 72, 215, 340, 315, color.RGBA{255, 252, 232, 235}, color.RGBA{74, 132, 83, 235})
 	drawStyledCentered(screen, a.headingFace, "TOP FIVE", 242, 260, green, color.RGBA{255, 255, 255, 150}, color.RGBA{})
 	a.drawHighScores(screen, 112, 300)
@@ -98,20 +97,28 @@ func (a *app) drawPlay(screen *ebiten.Image) {
 		frame = 1
 	}
 
+	renderX, renderY := b.SX, b.Y
+	rotation := 0.0
+	if b.State == game.Flying {
+		phase := float64(a.frame) * 0.16
+		renderY += math.Sin(phase) * 1.8
+		rotation = math.Max(-0.14, math.Min(0.14, b.VY*0.035)) + math.Sin(phase*0.7)*0.012
+	}
+
 	if b.State == game.Landed && a.landedOverWater() {
-		vector.DrawFilledCircle(screen, float32(b.SX), float32(b.Y+27), 34, color.RGBA{87, 154, 82, 245}, true)
-		vector.DrawFilledCircle(screen, float32(b.SX+18), float32(b.Y+20), 9, color.RGBA{103, 181, 96, 245}, true)
+		vector.DrawFilledCircle(screen, float32(renderX), float32(renderY+27), 34, color.RGBA{87, 154, 82, 245}, true)
+		vector.DrawFilledCircle(screen, float32(renderX+18), float32(renderY+20), 9, color.RGBA{103, 181, 96, 245}, true)
 	}
 	blinkVisible := b.Guard == 0 || (a.frame/4)%2 == 0
 	if blinkVisible {
-		a.drawBunnySprite(screen, frame, b.SX, b.Y, 0.92)
+		a.drawBunnySpriteMotion(screen, frame, renderX, renderY, 0.92, rotation)
 	}
 	if a.game.Seeds > 0 {
-		a.drawPuff(screen, b.SX, b.Y-76, a.game.Seeds, 0.78)
-		ebitenutil.DrawLine(screen, b.SX, b.Y-56, b.SX-5, b.Y-18, color.RGBA{84, 112, 56, 235})
+		a.drawPuff(screen, renderX, renderY-76, a.game.Seeds, 0.78)
+		ebitenutil.DrawLine(screen, renderX, renderY-56, renderX-5, renderY-18, color.RGBA{84, 112, 56, 235})
 	} else {
-		ebitenutil.DrawLine(screen, b.SX, b.Y-58, b.SX-4, b.Y-18, color.RGBA{84, 112, 56, 235})
-		vector.DrawFilledCircle(screen, float32(b.SX), float32(b.Y-59), 5, color.RGBA{151, 129, 73, 255}, true)
+		ebitenutil.DrawLine(screen, renderX, renderY-58, renderX-4, renderY-18, color.RGBA{84, 112, 56, 235})
+		vector.DrawFilledCircle(screen, float32(renderX), float32(renderY-59), 5, color.RGBA{151, 129, 73, 255}, true)
 	}
 
 	for _, p := range a.particles {
@@ -139,13 +146,9 @@ func (a *app) drawHUD(screen *ebiten.Image) {
 		drawStyledCentered(screen, a.headingFace, fmt.Sprintf("x%d", a.game.Chain), 480, 58, color.RGBA{126, 94, 36, 255}, color.RGBA{}, color.RGBA{})
 	}
 
-	for i := 0; i < game.MaxSeeds; i++ {
-		c := color.RGBA{246, 245, 223, 80}
-		if i < a.game.Seeds {
-			c = color.RGBA{255, 255, 244, 225}
-		}
-		vector.DrawFilledCircle(screen, float32(728+i*8), 45, 2.5, c, true)
-	}
+	drawRoundedPanel(screen, 700, 20, 238, 58, cream, color.RGBA{94, 143, 93, 210})
+	a.drawPuff(screen, 735, 49, a.game.Seeds, 0.42)
+	drawStyledCentered(screen, a.headingFace, fmt.Sprintf("× %03d", a.game.Seeds), 834, 59, dark, color.RGBA{}, color.RGBA{})
 }
 
 func (a *app) landedOverWater() bool {
@@ -160,14 +163,11 @@ func (a *app) landedOverWater() bool {
 
 func (a *app) drawEndScreen(screen *ebiten.Image) {
 	cream := color.RGBA{255, 251, 231, 248}
-	green := color.RGBA{55, 109, 71, 255}
 	muted := color.RGBA{82, 105, 87, 255}
 	pink := color.RGBA{232, 150, 172, 255}
 
-	// Preserve the finished meadow behind the result; the run should feel concluded, not erased.
 	drawRoundedPanel(screen, 185, 148, 590, 385, cream, color.RGBA{75, 129, 83, 255})
 
-	// Decorative drifting seeds make this a first-class scene rather than a text modal.
 	for i := 0; i < 9; i++ {
 		a := float64(i)*0.72 + float64(a.frame)/90
 		x := 242 + math.Mod(float64(i*71)+math.Cos(a)*18, 470)
@@ -176,10 +176,9 @@ func (a *app) drawEndScreen(screen *ebiten.Image) {
 		vector.DrawFilledCircle(screen, float32(x+9), float32(y-6), 2, color.RGBA{245, 243, 220, 190}, true)
 	}
 
-	drawStyledCentered(screen, a.headingFace, "A GENTLE LANDING", game.LogicalWidth/2, 220, green, color.RGBA{255, 255, 255, 210}, color.RGBA{})
-	drawStyledCentered(screen, a.titleFace, fmt.Sprintf("%d", a.game.Score), game.LogicalWidth/2, 302, pink, color.RGBA{119, 139, 100, 150}, color.RGBA{})
-	drawStyledCentered(screen, a.labelFace, fmt.Sprintf("%d m   •   %d fireflies", a.game.Metres, a.game.FirefliesCollected), game.LogicalWidth/2, 348, muted, color.RGBA{}, color.RGBA{})
-	drawStyledCentered(screen, a.labelFace, fmt.Sprintf("%d seeds carried on the wind", a.game.Released), game.LogicalWidth/2, 380, muted, color.RGBA{}, color.RGBA{})
+	drawStyledCentered(screen, a.titleFace, fmt.Sprintf("%d", a.game.Score), game.LogicalWidth/2, 275, pink, color.RGBA{119, 139, 100, 150}, color.RGBA{})
+	drawStyledCentered(screen, a.labelFace, fmt.Sprintf("%d m   •   %d fireflies", a.game.Metres, a.game.FirefliesCollected), game.LogicalWidth/2, 333, muted, color.RGBA{}, color.RGBA{})
+	drawStyledCentered(screen, a.labelFace, fmt.Sprintf("%d seeds carried on the wind", a.game.Released), game.LogicalWidth/2, 365, muted, color.RGBA{}, color.RGBA{})
 
 	remaining := (a.game.EndTicks + game.TPS - 1) / game.TPS
 	message := "Returning to the meadow..."
@@ -200,10 +199,15 @@ func (a *app) drawEndScreen(screen *ebiten.Image) {
 }
 
 func (a *app) drawBunnySprite(screen *ebiten.Image, frame int, x, y, scale float64) {
+	a.drawBunnySpriteMotion(screen, frame, x, y, scale, 0)
+}
+
+func (a *app) drawBunnySpriteMotion(screen *ebiten.Image, frame int, x, y, scale, rotation float64) {
 	img := a.bunny[frame]
 	op := &ebiten.DrawImageOptions{Filter: ebiten.FilterLinear}
 	op.GeoM.Translate(-50, -50)
 	op.GeoM.Scale(scale, scale)
+	op.GeoM.Rotate(rotation)
 	op.GeoM.Translate(x, y)
 	screen.DrawImage(img, op)
 }
@@ -212,18 +216,22 @@ func (a *app) drawPuff(screen *ebiten.Image, x, y float64, seeds int, scale floa
 	if seeds <= 0 {
 		return
 	}
-	core := float32(7 * scale)
-	outer := 31.0 * scale
+	ratio := math.Min(1, math.Max(0, float64(seeds)/float64(game.MaxSeeds)))
+	tufts := int(math.Round(36 * ratio))
+	if tufts < 5 {
+		tufts = 5
+	}
+	core := float32((5.5 + 1.5*ratio) * scale)
+	outer := (21.0 + 10.0*ratio) * scale
 	vector.DrawFilledCircle(screen, float32(x), float32(y), core, color.RGBA{198, 174, 118, 255}, true)
-	for i := 0; i < seeds; i++ {
-		angle := -math.Pi/2 + 2*math.Pi*float64(i)/float64(seeds)
+	for i := 0; i < tufts; i++ {
+		angle := -math.Pi/2 + 2*math.Pi*float64(i)/float64(tufts)
 		x1 := x + math.Cos(angle)*7*scale
 		y1 := y + math.Sin(angle)*7*scale
 		x2 := x + math.Cos(angle)*outer
 		y2 := y + math.Sin(angle)*outer
 		ebitenutil.DrawLine(screen, x1, y1, x2, y2, color.RGBA{244, 240, 216, 220})
 		vector.DrawFilledCircle(screen, float32(x2), float32(y2), float32(3.0*scale), color.RGBA{255, 254, 239, 235}, true)
-		// Two tiny hairs make each seed read as a dandelion tuft at gameplay scale.
 		for _, d := range []float64{-0.38, 0.38} {
 			a := angle + d
 			ebitenutil.DrawLine(screen, x2, y2, x2+math.Cos(a)*7*scale, y2+math.Sin(a)*7*scale, color.RGBA{255, 254, 241, 180})
@@ -269,14 +277,12 @@ func (a *app) updateParticles() {
 }
 
 func drawRoundedPanel(screen *ebiten.Image, x, y, w, h float64, fill, border color.RGBA) {
-	// Rounded enough for this game's soft visual language without introducing a UI toolkit.
 	ebitenutil.DrawRect(screen, x+16, y, w-32, h, fill)
 	ebitenutil.DrawRect(screen, x, y+16, w, h-32, fill)
 	vector.DrawFilledCircle(screen, float32(x+16), float32(y+16), 16, fill, true)
 	vector.DrawFilledCircle(screen, float32(x+w-16), float32(y+16), 16, fill, true)
 	vector.DrawFilledCircle(screen, float32(x+16), float32(y+h-16), 16, fill, true)
 	vector.DrawFilledCircle(screen, float32(x+w-16), float32(y+h-16), 16, fill, true)
-	// Deliberately thin frame.
 	ebitenutil.DrawLine(screen, x+16, y, x+w-16, y, border)
 	ebitenutil.DrawLine(screen, x+16, y+h, x+w-16, y+h, border)
 	ebitenutil.DrawLine(screen, x, y+16, x, y+h-16, border)
