@@ -1,3 +1,4 @@
-/dandelion-drift
-*.AppImage
-scores.json
+/bin/
+/scores.json
+*.tmp
+.DS_Store

@@ -1,0 +1,54 @@
+DANDELION DRIFT V0.1
+====================
+
+                         KEYBOARD
+                            |
+                            v
+                  +-------------------+
+                  |   Ebitengine app  |
+                  | input / draw/audio|
+                  +---------+---------+
+                            | Input
+                            v
+                  +-------------------+
+                  |       Game        |
+                  | authoritative     |
+                  | gameplay state    |
+                  +----+----+----+----+
+                       |    |    |
+          +------------+    |    +-------------+
+          |                 |                  |
+          v                 v                  v
+      flap/drift       world generation     collisions
+          |                 |                  |
+          v                 v                  v
+      puff reserve      flowers/planters   hazards/fireflies
+          +-----------------+------------------+
+                            |
+                            v
+                     score / end run
+
+Gameplay state
+--------------
+Screen / Camera / Scroll / Bunny / Seeds
+Flowers / Planters / Bees / Thistles / Ponds / Gusts / Fireflies
+Released / Chain / FireflyScore / Metres / Score / EndTicks
+seeded gameplay RNG / bounded generated world / Events
+
+Adapter-only state
+------------------
+embedded sprites / fonts / procedural audio
+particles / visual effects / initials-entry UI
+attract-mode demo / local HighScores
+
+Persistence
+-----------
+                  +-------------------+
+                  |    scores.json    |
+                  | one top-five list |
+                  +-------------------+
+
+Deliberately absent
+-------------------
+no event bus, service layer, repository abstraction, physics framework,
+UI framework, ECS, network service, account system, telemetry or runtime AI

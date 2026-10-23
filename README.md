@@ -1,44 +1,98 @@
 # Dandelion Drift
 
-A gentle side-scrolling flight game for children, built in Go with Ebitengine.
+**Every flap spends your wings. Every flap plants tomorrow.**
 
-A bunny floats beneath a dandelion puff. The puff is the game's single visible resource: it provides lift, takes damage and can be restored by landing on flowers.
+Dandelion Drift is a gentle full-screen side-scrolling flight game for children, written in Go. A bunny floats beneath a dandelion puff. Each flap spends one puff; flowers restore it; hazards and fireflies drain it; released seeds can grow into future flowers.
 
-**Current release: v0.1.0**
+The repository is also a Jonno's Garage engineering example: polished output from a deliberately small runtime design.
 
-## How it plays
+## Play
 
-- Start each flight with **50 puffs**.
-- `Space` flaps upward and spends one puff.
-- Lift and glide weaken as the puff runs down.
-- Flowers can be landed on during a gentle descent and **restore puffs**, limited by each flower's nectar.
-- Fireflies add score and chain points but **drain 15 puffs** when touched.
-- Bees, thistles, water, frogs and ground contact can also drain puffs or disrupt flight.
-- Every fourth released seed can become a planted flower.
-- When the puff reaches zero, the bunny falls softly and the flight ends on landing.
+```text
+Space        start / flap
+Left/Right   optional drift
+Esc          quit
+```
 
-The game includes deterministic world generation, persistent local top-five scores, initials entry, finished sprites, sound cues, visual effects and a full-screen 960×720 logical playfield.
+A flight begins with **50 puffs**. Each flap spends one. A fuller puff gives stronger lift and a slower glide; a depleted puff weakens both.
 
-## Controls
+Land gently on a flower to restore puffs from its limited nectar. Every fourth released seed can grow into a future flower. Bees, thistles, grass, ponds and frogs remove puffs. Fireflies are a deliberate risk/reward object: they add score and chain points but drain **15 puffs** when touched.
 
-- `Space` — start / flap
-- `Left`, `Right` — optional drift
-- `Esc` — quit
+The HUD shows the remaining puff count explicitly while the drawn puff also shrinks proportionally.
 
-## Download
+## V0.1
 
-Linux release packages are published under **Releases**:
+V0.1 targets Linux desktop. It launches full-screen using a fixed 960×720 logical playfield and preserves 4:3 geometry on wider or taller displays with centred black pillarboxing or letterboxing.
 
-- `Dandelion-Drift-v0.1.0-linux-x86_64.tar.gz`
-- `Dandelion-Drift-v0.1.0-linux-arm64.tar.gz`
-- `SHA256SUMS.txt`
+The game includes:
 
-Extract the archive for your architecture and run `Dandelion-Drift`. No installer is required.
+- endless deterministic meadow generation;
+- 50-puff starting health/lift reserve;
+- Space-only complete play with optional horizontal drift;
+- flower perching and limited recharge;
+- one-in-four seed planting;
+- bees, thistles, grass, ponds, frogs and wind gusts;
+- firefly scoring chains with a 15-puff collection cost;
+- persistent local top-five scores with one-to-three-character initials;
+- an attract screen with a live deterministic demo;
+- finished sprites, procedural sound cues and restrained visual effects;
+- no network, telemetry, accounts, advertising or runtime AI.
 
-## Engineering shape
+## Build
 
-Gameplay truth lives in `internal/game`. Ebitengine in `cmd/dandeliondrift` is a thin input/rendering adapter; rendering owns no gameplay decisions.
+Dandelion Drift uses Go 1.25+ and Ebitengine 2.10.5.
 
-The build is deliberately small: one Go application, deterministic 60 TPS gameplay, bounded live entities and no ECS, event bus or background runtime architecture.
+```bash
+go build -trimpath -ldflags="-s -w" -o ./bin/dandelion-drift ./cmd/dandeliondrift
+./bin/dandelion-drift
+```
 
-The design record is retained in [`PRD.md`](PRD.md) and [`EDD.md`](EDD.md). Those documents record the design process; this README describes the shipped v0.1.0 behaviour.
+The executable contains the required artwork and generates its short sound cues in code. High scores are stored locally in `scores.json` beside the working directory.
+
+## Engineering gate
+
+```bash
+gofmt -w ./cmd ./internal
+go vet ./...
+go test -race -count=1 ./...
+go build ./cmd/dandeliondrift
+GOOS=linux GOARCH=arm64 go build ./cmd/dandeliondrift
+```
+
+The gameplay package is deterministic for a fixed seed and can be tested without opening a graphical window. CI enforces formatting, vet, race tests, Linux builds, long-run hardening and release-balance acceptance tests.
+
+## Architecture
+
+```text
+keyboard
+   |
+   v
+Game.Update()  <---- one authoritative gameplay state
+   |
+   +-- flap / drift
+   +-- scroll / generate / prune
+   +-- perch / regrow / plant
+   +-- hazards / fireflies
+   +-- score / end-of-flight
+   |
+   v
+Game state ----> thin Ebitengine adapter ----> screen + procedural sound
+
+local JSON <---- top-five scores only
+```
+
+There is no reusable game engine, event bus, service layer, repository abstraction, physics framework or UI framework. Presentation state such as initials entry and particles stays in the Ebitengine adapter rather than contaminating gameplay truth. See [`EDD.md`](EDD.md) and [`architecture.txt`](architecture.txt).
+
+## Design and evidence
+
+- [`PRD.md`](PRD.md) — final product contract and acceptance criteria.
+- [`EDD.md`](EDD.md) — final hand-written engineering design.
+- [`DESIGN-NOTES.md`](DESIGN-NOTES.md) — material design decisions and rejected complexity.
+- [`TESTING.md`](TESTING.md) — automated testing, human UAT and failures found during packaging/runtime testing.
+- [`RELEASE.md`](RELEASE.md) — release gate and evidence status.
+- [`generated/EDD.md`](generated/EDD.md) — code-derived engineering view pinned to the approved gameplay source snapshot.
+- [`generated/COMPARISON.md`](generated/COMPARISON.md) — design versus implementation comparison.
+
+## Licence
+
+MIT. See [`LICENSE`](LICENSE).

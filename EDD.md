@@ -1,31 +1,47 @@
 # Dandelion Drift — Engineering Design Document
 
-**Version:** 0.1
-**Status:** Draft for V0.1.0
+**Version:** 0.2  
+**Status:** Final — V0.1.0, reconciled against the approved implementation  
 **Implementation:** Go 1.25+, Ebitengine 2.10.5
 
 ## 1. Purpose
 
-Dandelion Drift is one small endless flight game. A bunny floats under a dandelion puff that is her lift, her health and, through the seeds she spends, the source of future landing spots.
+Dandelion Drift is one small endless flight game. A bunny floats beneath a dandelion puff that is both movement reserve and health. Flowers restore it. Hazards and fireflies drain it. Released flap seeds can grow into future flowers.
 
 > **Keep the game as small as the game actually is.**
 
-Richness comes from four interacting rules: flaps spend seeds, seeds set lift and glide, flowers refill seeds, and spent seeds plant flowers. Hazards only add pressure to that loop.
+Richness comes from a few interacting rules: flapping spends the reserve, reserve level changes flight, flowers restore it, released seeds alter the future world, and hazards apply pressure.
+
+The implementation is not a reusable game engine.
 
 ## 2. Design constraints
 
-1. One authoritative game state.
-2. One explicit, single-threaded update loop at a fixed 60 ticks per second.
-3. Deterministic gameplay from run seed and input.
-4. No abstraction before a demonstrated need.
-5. Bounded gameplay and cosmetic resources.
-6. Rendering and sound react to state and events; they own no game truth.
-7. Every gameplay rule testable without opening a window.
-8. Visual polish comes from art and animation, not architecture.
+1. one authoritative gameplay state;
+2. one explicit single-threaded update loop at 60 ticks per second;
+3. deterministic gameplay from run seed and input;
+4. no abstraction before demonstrated need;
+5. bounded gameplay and cosmetic resources;
+6. renderer and sound own no gameplay decisions;
+7. every gameplay rule is testable without opening a window;
+8. high-score entry and cosmetic presentation stay outside gameplay truth;
+9. visual quality comes from art, animation and composition rather than frameworks;
+10. release packaging must remain simpler than the game.
+
+If the implementation becomes materially more complicated than this document, first ask what can be deleted.
 
 ## 3. Runtime dependency
 
-Ebitengine for the window, fixed update loop, keyboard, 2D drawing, text and audio. Nothing else.
+Ebitengine provides:
+
+- window and fixed game loop;
+- keyboard input;
+- 2D drawing and transforms;
+- text;
+- audio output.
+
+Go's standard library provides persistence, deterministic RNG and the remaining runtime services.
+
+No second game, UI, physics or audio framework is required.
 
 ```text
 Ebitengine
@@ -34,523 +50,518 @@ Ebitengine
 thin adapter (cmd/dandeliondrift)
     |
     v
-Game (internal/game): plain Go rules
+Game (internal/game)
+    |
+    v
+plain deterministic Go rules
 ```
 
 ## 4. Units and coordinates
 
 | Quantity | Unit |
 | --- | --- |
-| time | ticks (60 per second) |
-| horizontal position | world pixels, increasing to the right |
-| vertical position | screen pixels, 0 at top (no vertical scrolling) |
+| time | ticks, 60 per second |
+| horizontal world position | pixels increasing to the right |
+| vertical position | screen pixels, 0 at top |
 | velocity | pixels per tick |
-| distance shown | metres; 1 m = 40 px |
+| displayed distance | metres, 40 px = 1 m |
 
-The logical screen is 960×720.
+Logical playfield: **960×720**.
 
-```text
-ceiling        y = 60
-ground surface y = 640   (grass or water)
-camera         world x of the screen's left edge, advanced by Scroll each tick
-bunny          screen x between 120 and 600; world x = camera + screen x
-```
+The world camera advances rightward while scenery is rendered moving left. Bunny horizontal position remains bounded within the playfield.
 
-The bunny's position is the centre of her body. The puff is drawn above her, centred 56 px higher; the puff's collision circle (radius 30) and the body's collision box (36×44) are both tested against hazards.
+## 5. Authoritative gameplay state
 
-## 5. Authoritative state
+Gameplay truth lives in one `Game` in `internal/game`.
+
+Conceptually the implementation owns:
 
 ```go
 type Game struct {
-    Screen Screen // Attract, Play, Initials
+    Screen Screen
 
-    Camera float64 // world x of screen left
-    Scroll float64 // px per tick
-
-    Bunny Bunny
-    Seeds int // 0..24
+    Camera float64
+    Scroll float64
+    Bunny  Bunny
+    Seeds  int
 
     Flowers   []Flower
-    Planters  []Planter  // released seeds that will plant
+    Planters  []Planter
     Bees      []Bee
     Thistles  []Thistle
-    Ponds     []Pond     // each with its frog
+    Ponds     []Pond
     Gusts     []Gust
     Fireflies []Firefly
 
-    genX float64 // world x up to which the world has been generated
-
-    Released  int // seeds released this flight, for the 1-in-4 planting rule
-    Chain     int // firefly multiplier 1..5
-    ChainTicks int
-
-    Score, Metres int
-    Ticks         int
-
-    EndTicks int    // end-of-flight overlay countdown
-    Scores   HighScores
-    Initials string
+    Released           int
+    Chain, ChainTicks  int
+    FireflyScore       int
+    FirefliesCollected int
+    Score, Metres      int
+    Ticks, EndTicks    int
 
     Events []Event
 
-    RNG         *rand.Rand // gameplay: world generation only
-    CosmeticRNG *rand.Rand
-    Particles   []Particle
+    rng *rand.Rand
+    // generation counters / boundaries
 }
 ```
 
-The gameplay RNG is used only by world generation. Bee bob, frog timing and planting are derived from ticks and counters, so a run replays exactly from seed and input. Cosmetic seeds, petals and splashes use the cosmetic RNG.
+The exact field layout is implementation detail. The design boundary is not: gameplay truth lives here.
 
-## 6. The bunny
+The core has only `Attract` and `Play` screens. High-score initials entry is presentation/application state in the Ebitengine adapter because it does not alter game rules.
+
+## 6. Adapter-owned state
+
+`cmd/dandeliondrift` owns things that affect presentation but not gameplay truth:
+
+- Ebitengine images and fonts;
+- particle/effect lists;
+- procedural audio players;
+- persisted high-score table;
+- initials-entry text and mode;
+- deterministic attract-demo game;
+- animation frame counters.
+
+This separation is deliberate. Moving initials, renderer particles or sound machinery into `Game` would make the deterministic core less clear without improving behaviour.
+
+## 7. Bunny
 
 ```go
 type Bunny struct {
-    SX, Y  float64 // screen x, screen y
-    VX, VY float64
-    State  BunnyState // Flying, Perched, Falling (puff gone), Landed
-    Perch  int        // index of perched flower, -1 if none
-    Guard  int        // ticks of knock protection remaining
-    FlapCooldown int
+    SX, Y        float64
+    VX, VY       float64
+    State        BunnyState // Flying, Perched, Falling, Landed
+    Guard        int
+    PushTicks    int
+    Perch        int
     RegrowTimer  int
+    FlapCooldown int
 }
 ```
 
-## 7. Concepts deliberately kept as values
+The bunny's position is the centre of the body. Collision geometry is simple circles/rectangles around the visible body and puff.
+
+## 8. Core tuning constants
+
+The final V0.1 release uses:
 
 ```text
-seeds        = int (the puff IS this number)
-lift, glide  = functions of seeds
-scroll       = float64, function of distance
-chain        = int
-score        = int
+TPS               60
+logical size      960 × 720
+MaxSeeds          50
+ScrollStart       1.5 px/tick
+ScrollMax         3.0 px/tick
+FlapCooldown      8 ticks
+RegrowTicks       15 ticks per puff
+NectarWild        10
+NectarPlanted     6
+PlantEvery        4 released flap seeds
+Bee damage        3
+Thistle damage    3
+Ground damage     1
+Water damage      4
+Frog damage       6
+Firefly damage    15
+ChainWindow       120 ticks
+ChainMax          5
+FireflyPoints     10 × chain
+EndTicks          180
 ```
 
-No `Puff`, `Physics`, `Camera`, `Spawner` or `Level` types.
+Tests should assert important relationships and release values where they form product contract.
 
-## 8. Tuning constants (starting values)
+## 9. Update model
 
-```go
-const (
-    TPS        = 60
-    PxPerMetre = 40.0
-    Ceiling    = 60.0
-    GroundY    = 640.0
-    MinSX, MaxSX = 120.0, 600.0
+The core update is explicit and single-threaded.
 
-    MaxSeeds = 24
-
-    ScrollStart = 1.5
-    ScrollMax   = 3.0
-    ScrollRamp  = 30000.0 // px of distance to reach ScrollMax (750 m)
-
-    Gravity      = 0.10
-    FlapImpulse  = 3.0   // scaled by lift
-    FlapCooldown = 8
-    MaxRise      = -4.0
-    DriftSpeed   = 1.6
-
-    MaxFallFull  = 1.0 // terminal fall with a full puff
-    MaxFallEmpty = 2.4 // terminal fall with one seed
-    MaxFallStem  = 2.0 // no puff, floating down on the bare stem
-
-    PerchMaxVY   = 2.0
-    RegrowTicks  = 15  // per seed while perched
-    NectarWild   = 10
-    NectarPlanted = 6
-
-    PlantEvery   = 4   // one released seed in four plants
-    PlanterVX    = 0.4 // world px/tick ahead of scroll
-    PlanterVY    = 0.6
-    SproutTicks  = 240
-    MaxPlanted   = 6
-
-    BeeSeeds, ThistleSeeds, GroundSeeds, WaterSeeds, FrogSeeds = 3, 3, 1, 4, 6
-    GuardTicks   = 60
-    FrogGuard    = 90
-    BounceVY     = -2.5
-    SplashVY     = -3.5
-    FlingVY      = -4.0
-
-    ChainWindow  = 120
-    ChainMax     = 5
-    FireflyPoints = 10
-
-    EndTicks     = 150
-    MaxParticles = 256
-)
-```
-
-Tests assert relationships (sections 15 and 22), not these numbers.
-
-## 9. Update loop
+Conceptually:
 
 ```text
 clear Events
     |
-if Landed: count down the end overlay; route to Initials or Attract; return
+Attract? Space may start fresh flight; otherwise return
     |
-Scroll = ScrollStart + (ScrollMax - ScrollStart) * min(1, Camera / ScrollRamp)
-Camera += Scroll
+Landed? count down result interval -> Attract; return
     |
-generate world ahead while genX < Camera + 2,000
+advance camera / scroll
     |
-input: flap, drift
+generate world ahead
     |
-bunny motion (or perch carry and regrow)
+read flap / optional drift
     |
-planters fall; sprouts bloom
+update bunny flight or perch recharge
     |
-bees, frogs move
+update planters / sprouts
     |
-collisions: flowers (perch), hazards (knocks), fireflies
+update bees / frogs
     |
-seeds == 0 -> Falling; Falling touches ground -> Landed
+resolve flower perch
     |
-metres, score, chain timer
+resolve hazards
     |
-prune entities behind Camera - 200
+resolve fireflies
     |
-cosmetic particles
+resolve ground / water
+    |
+update score / chain / distance
+    |
+prune world behind camera
+    |
+empty reserve -> Falling
 ```
 
-No goroutines, channels, event bus or actors.
+No goroutines, channels, ECS, actors or event bus.
 
-## 10. Lift and glide
+## 10. Puff, lift and flap
+
+The puff reserve is an integer from 0 to 50.
+
+Lift and terminal fall are monotonic functions of remaining reserve:
 
 ```text
-f      = Seeds / MaxSeeds
-lift   = 0.45 + 0.55 * f
+f       = Seeds / MaxSeeds
+lift    = 0.45 + 0.55 * f
 maxFall = MaxFallFull + (MaxFallEmpty - MaxFallFull) * (1 - f)
 ```
 
-### Flap
-
-Space just pressed, `State == Flying` or `Perched`, `Seeds > 0`, `FlapCooldown == 0`:
+A valid Space press while flying or perched:
 
 ```text
-VY = max(MaxRise, VY - FlapImpulse * lift)
-Seeds--; Released++
-if Released % PlantEvery == 0: add Planter at bunny world position
-if Perched: State = Flying, Perch = -1, emit TakeOff
-FlapCooldown = 8; emit Flap
+calculate lift from current reserve
+apply upward impulse
+Seeds--
+Released++
+if Released % 4 == 0: create Planter
+if perched: leave flower
+start flap cooldown
+emit Flap / TakeOff events as appropriate
 ```
 
-Lift is computed **before** the seed is spent, so the flap that empties the puff still lifts.
+Lift is calculated before the puff is spent, so the final flap still lifts.
 
-### Fall
+When reserve reaches zero, state becomes `Falling` and further flaps are ignored.
+
+## 11. Perching and recharge
+
+A bloomed flower can be perched only during a controlled downward approach to its head.
+
+While perched:
 
 ```text
-VY = min(maxFall, VY + Gravity + gust)
-Y += VY; clamp at Ceiling (VY = 0 there)
-SX += VX (Left/Right sets VX to ±DriftSpeed, else 0); clamp to MinSX..MaxSX
+carry bunny with flower as camera advances
+hold vertical position
+if Seeds < 50 and Nectar > 0:
+    every 15 ticks: Seeds++, Nectar--, emit Regrow
+if carried beyond left bound:
+    auto-hop into Flying
 ```
 
-## 11. Perching
+A spent flower can no longer provide recharge.
 
-### Landing on a flower
-
-A flower head is a circle of radius 28 at `(flower.X, GroundY - flower.Height)`. The bunny perches when:
-
-```text
-State == Flying
-VY >= 0 and VY <= PerchMaxVY
-bunny's feet (Y + 22) are within the head circle
-flower is bloomed and has Nectar > 0
-```
-
-Then `State = Perched`, `VY = 0`, the bunny's feet snap to the top of the head, emit `Perch`.
-
-### While perched
-
-```text
-SX = flower.X - Camera            // carried left with the world
-every RegrowTicks: if Seeds < MaxSeeds and Nectar > 0: Seeds++, Nectar--, emit Regrow
-Nectar == 0: flower wilts (drawn drooping); stays as a perch until she leaves
-SX < MinSX: auto hop: State = Flying, VY = -2.0, emit TakeOff
-```
-
-A spent flower cannot be perched again.
+Recharge is intentionally slow enough that resting is a decision rather than an instant refill.
 
 ## 12. Planting
 
-```go
-type Planter struct{ X, Y, VX, VY float64 } // world x, screen y
-```
+Every fourth puff spent through flapping creates a gameplay `Planter`.
 
-Each tick: `X += Scroll + PlanterVX`, `Y += PlanterVY`. At `Y >= GroundY`:
+A planter moves ahead/downward until it reaches the ground. It becomes a planted flower only when the location is valid:
 
-- over grass, and fewer than `MaxPlanted` planted flowers alive → Sprout at `X`, height 90–140 px from a counter-derived pattern, blooms after `SproutTicks`, `Nectar = NectarPlanted`, emit `Sprouted` on bloom;
-- over water, inside a thistle, or within 80 px of another flower → lost.
+- grass, not water;
+- not inside/too near a thistle;
+- not too close to another flower;
+- planted-flower cap not exceeded.
 
-Every released seed also spawns a cosmetic seed particle, so the child sees all seeds blow away; only one in four becomes gameplay.
+Planted flowers sprout after a fixed delay and carry less nectar than wild flowers.
+
+The renderer may show cosmetic blown-seed particles for every flap; cosmetic particles are not gameplay planters.
 
 ## 13. Hazards
 
-All knocks are ignored while `Guard > 0`. A knock: `Seeds = max(0, Seeds - n)`, `Guard = GuardTicks`, emit the hazard's event and `SeedsLost(n)`.
-
-| Hazard | Geometry | Behaviour |
-| --- | --- | --- |
-| Bee | circle r = 18; world `VX = -1.0`; `Y = baseY + 30·sin(ticks/30 + phase)` | knock `BeeSeeds`; bunny pushed `VX = -2` for 10 ticks |
-| Thistle | rectangle 30 wide, height 80–180 from the ground | knock `ThistleSeeds`; `VY = BounceVY` |
-| Grass | ground outside ponds, flowers and thistles | knock `GroundSeeds`; `VY = BounceVY` |
-| Water | ground inside a pond span | knock `WaterSeeds`; `VY = SplashVY`; emit `Splash` |
-| Frog | sits at pond centre; leap arc `VY0 = -6`, gravity 0.25 | leaps when bunny's world x is within ±80 px and `Y > GroundY - 180`, at most once per 150 ticks; touching the leaping frog knocks `FrogSeeds`, `VY = FlingVY`, `Guard = FrogGuard` |
-| Gust | world x span, all heights | adds −0.06 (updraft) or +0.05 (downdraft) to gravity while inside |
-
-Grass and water knocks ignore `Guard` for the bounce (she must never sink into the ground) but not for seed loss.
-
-## 14. Fireflies and scoring
-
-Firefly: circle r = 20. Collecting:
+Normal hazard damage is applied by one small `knock` rule:
 
 ```text
-if ChainTicks > 0: Chain = min(ChainMax, Chain + 1) else Chain = 1
-Score += FireflyPoints * Chain
-ChainTicks = ChainWindow
-emit Firefly(Chain)
+if Guard > 0 or Seeds <= 0: ignore damage
+lost = min(damage, Seeds)
+Seeds -= lost
+grant guard interval
+emit hazard event + SeedsLost(lost)
 ```
 
-`ChainTicks` counts down each tick. Metres = floor(Camera / PxPerMetre); total score = Metres + firefly points.
+Hazard-specific physical responses remain small:
+
+| Hazard | Damage | Physical response |
+| --- | ---: | --- |
+| Bee | 3 | short leftward push |
+| Thistle | 3 | upward bounce |
+| Grass | 1 | upward bounce |
+| Pond | 4 | stronger splash upward |
+| Frog | 6 | stronger fling upward |
+| Gust | 0 | modifies vertical acceleration |
+
+Ground and water bounce still occur during protection; only repeat puff loss is suppressed.
+
+## 14. Fireflies
+
+Fireflies deliberately do not use the normal guarded-hazard rule because collecting one is an intentional score tradeoff.
+
+On contact:
+
+```text
+mark collected
+advance/reset chain
+ChainTicks = 120
+FireflyScore += 10 * Chain
+FirefliesCollected++
+lost = min(15, Seeds)
+Seeds -= lost
+emit Firefly(chain) + SeedsLost(lost)
+```
+
+This means a firefly can empty the puff and end the flight.
 
 ## 15. World generation
 
-The world is generated in chunks ahead of the camera from the gameplay RNG.
+The world is generated in bounded chunks ahead of the camera using the gameplay RNG.
 
-| Chunk | Width (px) | Content |
-| --- | --- | --- |
-| Meadow | 600 | 1–2 flowers, optional fireflies |
-| Gap | 400 | grass only |
-| ThistlePatch | 500 | 2–3 thistles |
-| BeeLine | 600 | 2–4 bees at staggered heights |
-| Pond | 400–600 | water span and a frog |
-| Updraft | 400 | updraft gust, firefly column |
-| Downdraft | 300 | downdraft gust |
-| FireflyArc | 500 | 6 fireflies in an arc |
+Chunk families are:
 
-Weights shift with distance: early worlds are mostly Meadow, Gap and FireflyArc; hazards thicken toward 750 m and then hold steady.
+- Meadow;
+- Gap;
+- ThistlePatch;
+- BeeLine;
+- Pond;
+- Updraft;
+- Downdraft;
+- FireflyArc.
 
-### Invariants
+Early play strongly favours open chunks. Hazard pressure increases with distance and then caps.
 
-1. **Gentle start.** The first 1,200 px contain one flower and no hazards.
-2. **Reachable flowers (FR10).** The gap between consecutive generated flower heads never exceeds
+Structural rules prevent impossible worlds:
 
-   ```text
-   MaxGap = 0.8 * (GroundY - Ceiling - 90) / MaxFallFull * Scroll
-          = 392 * Scroll  -> 588 px at the start, 1,176 px at full speed
-   ```
+1. the first 1,200 px are gentle and contain an early flower;
+2. flower-free chunks are followed by a flower-bearing meadow;
+3. ponds do not directly follow gaps;
+4. hazard patterns leave usable paths;
+5. ponds and live-world extent are bounded.
 
-   which is 80% of a no-flap full-puff glide from the ceiling to the lowest flower head. Planted flowers only add to this.
-3. **Clear approach.** No bee path, thistle or gust within 120 px horizontally of a flower head.
-4. **Passable bees.** A BeeLine leaves a vertical gap of at least 160 px between bee paths.
-5. **Bounded ponds.** Ponds are at most 600 px wide and never directly follow a Gap.
+Generated entities behind the camera are pruned, so long flights do not grow memory without limit.
 
-The generator rejects and redraws a chunk that would break an invariant; after 64 failed redraws it places a Meadow, which is always valid.
-
-## 16. End of flight
+## 16. Scoring and end of flight
 
 ```text
-Seeds == 0 (after a flap or a knock): State = Falling, emit PuffGone
-Falling: no flap; maxFall = MaxFallStem; hazards no longer knock
-Falling touches ground or water: State = Landed, EndTicks = 150, emit FlightOver
-EndTicks reaches 0: Initials if score qualifies (emit HighScore), else Attract
+Metres = floor(Camera / 40)
+Score  = Metres + FireflyScore
 ```
 
-Landing in water is drawn on a lily pad. The end is always soft.
+When reserve reaches zero, the bunny enters `Falling`. Hazards no longer remove reserve. On ground/water contact the bunny becomes `Landed` and a 180-tick result interval starts.
 
-## 17. Screens
+When that interval expires, the core returns to `Attract`.
+
+The adapter then decides whether the completed score qualifies for initials entry. This keeps score-table UI out of the gameplay state machine.
+
+## 17. Persistence
+
+The only persisted state is one top-five score table in local JSON.
+
+`internal/game/scores.go` provides normalisation, qualification, load and atomic temp-file/rename save behaviour.
+
+Missing score file starts empty. Malformed data is reported and the application continues with an empty table.
+
+The adapter owns the path and initials interaction.
+
+## 18. Attract and initials
+
+The attract screen is a finished game scene containing:
+
+- title treatment;
+- top five;
+- deterministic demo bunny;
+- start prompt.
+
+The demo uses a real `Game` with a fixed seed and scripted input, so it exercises real rules rather than a separate animation implementation.
+
+Initials entry is one-to-three letters; empty entry saves as `?`.
+
+## 19. Rendering
+
+Rendering reads state and decides no gameplay outcomes.
+
+The presentation layer is split by responsibility rather than framework:
 
 ```text
-ATTRACT   title, top five, demo bunny; Space starts a flight
-PLAY      flight, with the end-of-flight overlay
-INITIALS  1-3 letters, Enter confirms (Enter with no letters saves "?")
+main.go          app loop, input, assets, fonts
+scenes.go        attract/play/initials/result composition
+world_render.go  meadow, flowers, hazards, world pressure
+bunny_asset.go   embedded bunny sheet
+ effects.go      cosmetic effects
+audio.go         short procedural sound cues
 ```
 
-Esc quits from any screen. The demo bunny is the real `Game` running a fixed seed with a scripted flap pattern, so the attract screen also exercises the rules.
+The split is intentionally larger than Astro Answers' adapter because Dandelion Drift has a richer scrolling world, but it remains one thin application layer.
 
-The attract screen and end-of-flight presentation are first-class graphical scenes. They must be deliberately composed and polished to the same standard as gameplay. A finished flight must visibly conclude, then route back to the attract screen so a new flight starts from a clean state. This is a retained Astro Answers UAT lesson, not optional polish.
+### Puff display
 
-## 18. Input
+The HUD deliberately uses two views of one value:
 
-```go
-type Input struct {
-    Flap        bool // Space just pressed
-    Left, Right bool // held
-    Enter       bool
-    Backspace   bool
-    Chars       []rune
-}
-```
+- a proportional graphical puff;
+- an exact numeric remaining count.
 
-## 19. Events and sound
+The graphical puff uses a bounded number of tufts rather than drawing one tuft per puff. This keeps rendering readable after UAT increased the reserve from the original prototype value.
 
-```go
-const (
-    EvFlap Event = iota
-    EvTakeOff
-    EvPerch
-    EvRegrow
-    EvSprouted
-    EvBee
-    EvThistle
-    EvBounce
-    EvSplash
-    EvFrogLeap
-    EvFrogCatch
-    EvFirefly    // with chain level, pitch rises with chain
-    EvPuffGone
-    EvFlightOver
-    EvHighScore
-)
-```
+### Bunny motion
 
-About 13 WAV cues, 44.1 kHz mono, embedded. Firefly chain plays the same chime at five pre-rendered pitches rather than adding a synthesiser. Missing sounds degrade gracefully; missing sprites fail startup visibly.
+The renderer adds small continuous bob and rotation to the sprite while flying. This is presentation-only and does not alter collision or gameplay state.
 
-## 20. Rendering
+## 20. Assets
 
-The renderer reads state and draws; it decides nothing.
+Final V0.1 visual assets are embedded with the executable:
 
-### Code-drawn
+- bunny sprite sheet embedded as a Go base64 constant;
+- bee sheet;
+- frog sheet;
+- thistle image;
+- flower image.
 
-- sky gradient, drifting clouds, two parallax hill layers;
-- grass strip, pond water with ripples;
-- **the puff**: a central seed head with exactly `Seeds` tufts radiating evenly, re-spaced as seeds go; this is the health display and must never need digits;
-- flower stems, sprouts growing, wilted flowers drooping;
-- wind streaks in gust zones;
-- fireflies as soft glows; chain multiplier pops as "×3";
-- particles: blown seeds on every flap, petals on perch, splashes, regrow sparkles;
-- distance in metres and score;
-- a deliberately composed attract/start scene using game art, not a developer-menu presentation;
-- a visually finished end-of-flight scene that keeps the completed run visible, presents the result clearly, and returns to attract.
+The non-bunny image files are embedded from `assets/*.b64` and decoded at startup.
 
-### Raster assets (five PNGs)
+Obsolete prototype bunny/audio bundle files are not part of the release source.
 
-| Asset | Content |
-| --- | --- |
-| `bunny.png` | sheet: hang, flap, perched, landed |
-| `bee.png` | two wing frames |
-| `thistle.png` | thistle head and leaves (stem stretched in code) |
-| `flower.png` | flower head |
-| `frog.png` | sitting, leaping |
+## 21. Sound
 
-## 21. Persistence
+Short cues are generated procedurally in `audio.go` from small cue specifications.
 
-One local `scores.json`, single top-five table, temp-file then rename. Absent starts empty; malformed reports and starts empty. Carried over from Astro Answers' `scores.go`.
+There is no WAV asset pack, synthesiser subsystem or music engine.
+
+If a Linux audio device is unavailable, the game continues silently rather than failing startup.
 
 ## 22. Testing
 
-All gameplay tests run headless in `internal/game`.
+Gameplay tests run headless under `internal/game`.
 
-### Flight
-- `TestFlapRisesAndSpendsOneSeed`.
-- `TestLiftAndGlideMonotonicInSeeds`: more seeds → stronger lift, slower max fall.
-- `TestLastFlapStillLifts`.
-- `TestCeilingClamp`.
-- `TestDriftBounds`.
+The release suite covers:
 
-### Perching
-- `TestPerchOnlyOnGentleDescent`: rising or fast-falling bunny does not perch.
-- `TestRegrowUntilFullOrNectarSpent`.
-- `TestPerchCarriesLeftAndAutoHops`.
-- `TestSpentFlowerCannotBePerched`.
+- flap/lift/glide relationships;
+- perch rules and recharge;
+- planting and sprout behaviour;
+- each hazard and protection behaviour;
+- firefly chain/scoring/damage;
+- end-of-flight routing;
+- deterministic generation;
+- world invariants and live-entity bounds;
+- repeated-run reset hygiene;
+- high-score persistence and malformed-file handling;
+- final release balance: 50 starting puffs, flower recharge, 15-puff firefly cost.
 
-### Planting
-- `TestOneInFourSeedsPlants`.
-- `TestPlantingOnGrassOnly`.
-- `TestSproutBloomsAfterDelay`.
-- `TestPlantedFlowerCap`.
+`cmd/dandeliondrift/assets_test.go` also proves required embedded images decode and all procedural sound cues produce valid PCM.
 
-### Hazards
-- `TestEachHazardRemovesItsSeeds`.
-- `TestGuardPreventsDoubleKnock`.
-- `TestGroundAlwaysBouncesEvenWhenGuarded`.
-- `TestFrogLeapsOnlyWhenBunnyLowOverhead`.
-- `TestGustsChangeFall`.
+## 23. CI
 
-### Fireflies and score
-- `TestChainRisesWithinWindowAndResets`.
-- `TestChainCapsAtFive`.
-- `TestScoreIsMetresPlusFireflies`.
-
-### End of flight
-- `TestEmptyPuffFallsSoftlyAndEnds`.
-- `TestEndRoutesToInitialsOrAttract`.
-- `TestCompletedFlightReturnsAndStartsFresh`.
-
-### Generation
-- `TestGenerationDeterministicFromSeed`.
-- `TestInvariantsHoldOverLongFlights`: invariants 1–5 over 3,000 m for seeds 1–200.
-- `TestNoFlapGlideReachesNextFlower`: from the ceiling with a full puff and no input, every next flower head is reachable at the scroll speed in force.
-
-### Determinism
-- `TestReplayDeterministic`: same seed and inputs → identical state after 5,000 ticks.
-- `TestCosmeticRNGDoesNotAffectGameplay`.
-- `TestEventsMatchStateChanges`.
-
-Score persistence tests carried over from Astro Answers.
-
-## 23. Resource budgets
+Normal CI enforces:
 
 ```text
-live gameplay entities  <= 120 (world window ~3,200 px)
-planted flowers         <= 6
-planters in flight      <= 6
-particles               <= 256, overflow dropped
-events per tick         <= 8
+go mod tidy contract
+gofmt cleanliness
+go vet ./...
+go test -race -count=1 ./...
+Linux amd64 build
+Linux arm64 build
+named release hardening acceptance tests
 ```
 
-Entities behind `Camera − 200` are pruned every tick, so memory is flat however long the flight.
+This is the primary engineering gate.
 
-## 24. Repository shape
+## 24. Release packaging
+
+The public V0.1 game release follows the Astro Answers Garage pattern: one useful end-user Linux x86-64 asset attached to the GitHub Release.
+
+The release workflow:
+
+1. validates `VERSION == 0.1.0`;
+2. reruns source/test gates;
+3. builds the native Linux x86-64 executable;
+4. compresses it with UPX;
+5. graphical-smoke-tests it under Xvfb;
+6. packages `Dandelion-Drift-v0.1.0-linux-x86_64.tar.gz` preserving executable permissions;
+7. uploads that archive as the workflow artefact for manual attachment to the GitHub Release.
+
+Linux ARM64 remains a CI build proof, not a V0.1 release asset.
+
+AppImage is not the V0.1 delivery format because UAT exposed environment/FUSE friction on the target Ubuntu desktop. The proven native archive is simpler and more reliable.
+
+## 25. Repository shape
 
 ```text
+README.md
+PRD.md
+EDD.md
+DESIGN-NOTES.md
+TESTING.md
+RELEASE.md
+CHANGELOG.md
+LICENSE
+VERSION
+architecture.txt
+generated/
+    EDD.md
+    COMPARISON.md
 cmd/
     dandeliondrift/
-        main.go      Ebitengine adapter, rendering, audio, input
-        assets/      5 PNG, ~13 WAV
+        main.go
+        scenes.go
+        world_render.go
+        effects.go
+        audio.go
+        bunny_asset.go
+        assets/
 internal/
     game/
-        game.go      state, update loop, flight, perch, planting, hazards
-        world.go     chunk catalogue, generation, invariants
+        game.go
+        world.go
         scores.go
-        game_test.go
-        world_test.go
-        scores_test.go
+        *_test.go
+.github/workflows/
+    test.yml
+    release-build.yml
 ```
 
-## 25. Failure behaviour
+## 26. Failure behaviour
 
 | Failure | Behaviour |
 | --- | --- |
 | score file absent | start empty |
-| score file malformed | report, start empty |
-| sound missing | continue silently |
-| sprite missing | fail startup visibly |
-| generator redraw limit | place Meadow (always valid) |
-| entity cap reached | generation pauses until pruning frees space |
+| score file malformed | report and continue empty |
+| Linux audio device unavailable | continue silently |
+| required sprite cannot decode | fail startup visibly |
+| live cosmetic capacity exhausted | drop cosmetic work, preserve gameplay |
 | programming error | fail visibly |
-
-## 26. CI and release
-
-Copy Astro Answers' workflow: module tidy contract, `gofmt`, `go vet`, `go test -race -count=1`, Linux/amd64 and Linux/ARM64 builds, named core acceptance tests, AppImage. Then the generated EDD and comparison pinned to the release commit.
 
 ## 27. Deliberately absent
 
 ```text
-physics engine       particle engine        camera type
-entity component system   scene graph       spawner framework
-lives                power-ups              music
-gamepad / touch      network / telemetry / AI
+physics engine          reusable game engine
+ECS                     event bus
+scene graph             service layer
+repository abstraction  database
+music system            online leaderboard
+accounts                telemetry
+network service         runtime AI
+upgrade system          currency / inventory
 ```
 
 ## 28. Design conclusion
 
-The puff is the whole game:
+Dandelion Drift remains a small game despite a finished presentation.
+
+The puff is the central rule:
 
 - flapping spends it;
-- its size decides how well she flies;
-- flowers give it back;
-- what she spends grows into the flowers she will need.
+- its level changes flight;
+- flowers restore it;
+- hazards drain it;
+- fireflies trade 15 of it for scoring opportunity;
+- what is spent can grow future recovery points.
 
-Lift, health and future landing spots share one resource. The red-team test is unchanged:
+The final red-team question is unchanged:
 
 > **Does every piece of machinery remove more complexity than it introduces?**

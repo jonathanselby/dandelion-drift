@@ -7,6 +7,8 @@ on:
       - .github/workflows/release-build.yml
       - VERSION
       - README.md
+      - PRD.md
+      - EDD.md
   workflow_dispatch:
 
 permissions:
@@ -36,21 +38,18 @@ jobs:
           go vet ./...
           go test -race -count=1 ./...
 
-      - name: Build native Linux binaries
+      - name: Build native Linux x86-64
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p release/x86_64 release/arm64
+          mkdir -p release
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
             go build -trimpath -ldflags='-s -w' \
-            -o release/x86_64/Dandelion-Drift ./cmd/dandeliondrift
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-            go build -trimpath -ldflags='-s -w' \
-            -o release/arm64/Dandelion-Drift ./cmd/dandeliondrift
-          chmod +x release/x86_64/Dandelion-Drift release/arm64/Dandelion-Drift
-          file release/x86_64/Dandelion-Drift release/arm64/Dandelion-Drift
+            -o release/Dandelion-Drift ./cmd/dandeliondrift
+          chmod +x release/Dandelion-Drift
+          file release/Dandelion-Drift
 
-      - name: Compress x86-64 executable
+      - name: Compress executable
         shell: bash
         run: |
           set -euo pipefail
@@ -59,16 +58,16 @@ jobs:
             https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz
           tar -xf upx.tar.xz
           sudo install -m 0755 upx-4.2.4-amd64_linux/upx /usr/local/bin/upx
-          upx --best --lzma release/x86_64/Dandelion-Drift
-          chmod +x release/x86_64/Dandelion-Drift
+          upx --best --lzma release/Dandelion-Drift
+          chmod +x release/Dandelion-Drift
 
-      - name: Launch-test production x86-64 executable
+      - name: Launch-test production executable
         shell: bash
         run: |
           set -euo pipefail
           export LIBGL_ALWAYS_SOFTWARE=1
           set +e
-          timeout 5s xvfb-run -a ./release/x86_64/Dandelion-Drift >release-launch.log 2>&1
+          timeout 5s xvfb-run -a ./release/Dandelion-Drift >release-launch.log 2>&1
           rc=$?
           set -e
           cat release-launch.log
@@ -78,31 +77,21 @@ jobs:
           fi
           echo "Release launch gate passed."
 
-      - name: Package release archives
+      - name: Package release archive
         shell: bash
         run: |
           set -euo pipefail
-          tar -C release/x86_64 -czf Dandelion-Drift-v0.1.0-linux-x86_64.tar.gz Dandelion-Drift
-          tar -C release/arm64 -czf Dandelion-Drift-v0.1.0-linux-arm64.tar.gz Dandelion-Drift
-          mkdir verify-x86 verify-arm
-          tar -C verify-x86 -xzf Dandelion-Drift-v0.1.0-linux-x86_64.tar.gz
-          tar -C verify-arm -xzf Dandelion-Drift-v0.1.0-linux-arm64.tar.gz
-          test -x verify-x86/Dandelion-Drift
-          test -x verify-arm/Dandelion-Drift
-          file verify-x86/Dandelion-Drift verify-arm/Dandelion-Drift
-          sha256sum \
-            Dandelion-Drift-v0.1.0-linux-x86_64.tar.gz \
-            Dandelion-Drift-v0.1.0-linux-arm64.tar.gz \
-            > SHA256SUMS.txt
-          cat SHA256SUMS.txt
+          tar -C release -czf Dandelion-Drift-v0.1.0-linux-x86_64.tar.gz Dandelion-Drift
+          mkdir verify
+          tar -C verify -xzf Dandelion-Drift-v0.1.0-linux-x86_64.tar.gz
+          test -x verify/Dandelion-Drift
+          file verify/Dandelion-Drift
+          sha256sum Dandelion-Drift-v0.1.0-linux-x86_64.tar.gz
 
-      - name: Upload production release bundle
+      - name: Upload production release archive
         uses: actions/upload-artifact@v4
         with:
-          name: Dandelion-Drift-v0.1.0-release
-          path: |
-            Dandelion-Drift-v0.1.0-linux-x86_64.tar.gz
-            Dandelion-Drift-v0.1.0-linux-arm64.tar.gz
-            SHA256SUMS.txt
+          name: Dandelion-Drift-v0.1.0-linux-x86_64
+          path: Dandelion-Drift-v0.1.0-linux-x86_64.tar.gz
           if-no-files-found: error
           retention-days: 30
