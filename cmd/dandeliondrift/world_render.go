@@ -11,6 +11,10 @@ import (
 )
 
 func (a *app) drawMeadow(screen *ebiten.Image) {
+	camera := a.game.Camera
+	if a.game.Screen == game.Attract && a.demo != nil {
+		camera = a.demo.Camera
+	}
 	for y := 0; y < game.LogicalHeight; y += 4 {
 		t := float64(y) / game.LogicalHeight
 		c := mix(color.RGBA{164, 222, 246, 255}, color.RGBA{241, 245, 214, 255}, t)
@@ -29,17 +33,17 @@ func (a *app) drawMeadow(screen *ebiten.Image) {
 	hillFar := color.RGBA{151, 196, 139, 255}
 	hillNear := color.RGBA{102, 166, 104, 255}
 	for i := -1; i < 7; i++ {
-		x := float32(i*190) - float32(math.Mod(a.game.Camera*0.08, 190))
+		x := float32(i*190) - float32(math.Mod(camera*0.08, 190))
 		vector.DrawFilledCircle(screen, x, 615, 165, hillFar, true)
 	}
 	for i := -1; i < 8; i++ {
-		x := float32(i*155) - float32(math.Mod(a.game.Camera*0.16, 155))
+		x := float32(i*155) - float32(math.Mod(camera*0.16, 155))
 		vector.DrawFilledCircle(screen, x, 655, 135, hillNear, true)
 	}
 
 	ebitenutil.DrawRect(screen, 0, game.GroundY, game.LogicalWidth, game.LogicalHeight-game.GroundY, color.RGBA{75, 143, 76, 255})
 	for i := 0; i < 42; i++ {
-		x := float64((i*47)%game.LogicalWidth) - math.Mod(a.game.Camera*0.55, 47)
+		x := float64((i*47)%game.LogicalWidth) - math.Mod(camera*0.55, 47)
 		h := 7.0 + float64((i*13)%9)
 		ebitenutil.DrawLine(screen, x, game.GroundY+2, x+2, game.GroundY-h, color.RGBA{47, 112, 58, 210})
 	}

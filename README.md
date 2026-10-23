@@ -8,9 +8,9 @@ A bunny floats beneath a dandelion puff. Every flap releases a seed, so the same
 
 ## Build status
 
-**V0.1 — Chunk 3 complete.**
+**V0.1 — Chunk 4 complete.**
 
-The third coherent build retains the complete lifecycle and resource loop, then adds the pressure and scoring layer:
+The fourth coherent build retains the complete game and adds the production presentation layer:
 
 - polished attract/start scene;
 - full-screen 960×720 logical playfield with aspect preservation;
@@ -37,9 +37,17 @@ The third coherent build retains the complete lifecycle and resource loop, then 
 - total score = metres + firefly points;
 - richer deterministic chunk catalogue whose pressure increases with distance;
 - long-run generation tests for gentle opening, reachable flowers, clear approaches, passable bee lanes, bounded ponds and live-entity budget;
-- the final bee, thistle, flower and frog art integrated at gameplay resolution.
+- the final bee, thistle, flower and frog art integrated at gameplay resolution;
+- one persistent local top-five table with atomic save/replace;
+- one-to-three-letter initials entry, with `?` for an empty entry;
+- a live fixed-seed demo bunny on the attract screen using the real game rules;
+- top five displayed as part of the finished attract scene;
+- event-driven sound cues, including five rising firefly-chain notes;
+- perch petals, regrow sparkles, splash/firefly bursts and chain pop feedback;
+- soft lily-pad landing when the final fall ends over water;
+- polished high-score initials scene and clean return to attract.
 
-Persistent high scores, sound and the final effects/UAT polish pass remain later chunks. They are not represented by temporary systems here.
+The game feature set is now present. The remaining chunks are hardening/UAT and release/publication work; they do not add new gameplay systems.
 
 ## Controls
 

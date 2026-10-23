@@ -19,22 +19,64 @@ func (a *app) drawAttract(screen *ebiten.Image) {
 	cream := color.RGBA{255, 251, 230, 255}
 	pink := color.RGBA{239, 158, 177, 255}
 
-	// Title: restrained sophistication from typography, shadow and the game art itself.
-	drawStyledCentered(screen, a.titleFace, "DANDELION", game.LogicalWidth/2, 105, cream, color.RGBA{97, 128, 92, 220}, dark)
-	drawStyledCentered(screen, a.titleFace, "DRIFT", game.LogicalWidth/2, 171, pink, color.RGBA{97, 128, 92, 210}, dark)
+	drawStyledCentered(screen, a.titleFace, "DANDELION", game.LogicalWidth/2, 96, cream, color.RGBA{97, 128, 92, 220}, dark)
+	drawStyledCentered(screen, a.titleFace, "DRIFT", game.LogicalWidth/2, 160, pink, color.RGBA{97, 128, 92, 210}, dark)
 
-	bob := math.Sin(float64(a.frame)/42) * 8
-	a.drawBunnySprite(screen, 0, 480, 360+bob, 1.35)
-	a.drawPuff(screen, 480, 260+bob, game.MaxSeeds, 1.25)
-	ebitenutil.DrawLine(screen, 481, 284+bob, 468, 337+bob, color.RGBA{89, 118, 58, 240})
+	// High scores and the live demo share the meadow instead of creating a menu layer.
+	drawRoundedPanel(screen, 72, 215, 340, 315, color.RGBA{255, 252, 232, 235}, color.RGBA{74, 132, 83, 235})
+	drawStyledCentered(screen, a.headingFace, "TOP FIVE", 242, 260, green, color.RGBA{255, 255, 255, 150}, color.RGBA{})
+	a.drawHighScores(screen, 112, 300)
 
-	// Clear child-facing start affordance; no menu system.
-	drawRoundedPanel(screen, 300, 472, 360, 92, color.RGBA{255, 252, 232, 232}, color.RGBA{74, 132, 83, 255})
-	drawStyledCentered(screen, a.headingFace, "PRESS SPACE", game.LogicalWidth/2, 515, green, color.RGBA{255, 255, 255, 160}, color.RGBA{255, 255, 255, 0})
-	drawStyledCentered(screen, a.labelFace, "TO FLOAT", game.LogicalWidth/2, 548, color.RGBA{75, 94, 76, 255}, color.RGBA{}, color.RGBA{})
+	drawRoundedPanel(screen, 500, 215, 388, 315, color.RGBA{244, 250, 229, 150}, color.RGBA{104, 156, 104, 160})
+	drawStyledCentered(screen, a.labelFace, "A LITTLE DRIFT", 694, 255, color.RGBA{69, 101, 72, 230}, color.RGBA{}, color.RGBA{})
+	a.drawDemoBunny(screen)
 
-	drawStyledCentered(screen, a.labelFace, "SPACE  FLAP     <-  ->  DRIFT", game.LogicalWidth/2, 608, color.RGBA{52, 84, 62, 255}, color.RGBA{}, color.RGBA{})
-	drawStyledCentered(screen, a.labelFace, "Every flap spends your wings", game.LogicalWidth/2, 678, color.RGBA{57, 91, 67, 220}, color.RGBA{}, color.RGBA{})
+	drawRoundedPanel(screen, 300, 555, 360, 82, color.RGBA{255, 252, 232, 238}, color.RGBA{74, 132, 83, 255})
+	drawStyledCentered(screen, a.headingFace, "PRESS SPACE", game.LogicalWidth/2, 598, green, color.RGBA{255, 255, 255, 160}, color.RGBA{})
+	drawStyledCentered(screen, a.labelFace, "TO FLOAT", game.LogicalWidth/2, 627, color.RGBA{75, 94, 76, 255}, color.RGBA{}, color.RGBA{})
+	drawStyledCentered(screen, a.labelFace, "Every flap spends your wings", game.LogicalWidth/2, 682, color.RGBA{57, 91, 67, 220}, color.RGBA{}, color.RGBA{})
+}
+
+func (a *app) drawHighScores(screen *ebiten.Image, x, y int) {
+	entries := a.scores.Normalized().Scores
+	for i := 0; i < 5; i++ {
+		initials := "---"
+		score := "-----"
+		if i < len(entries) {
+			initials = entries[i].Initials
+			score = fmt.Sprintf("%05d", entries[i].Score)
+		}
+		lineY := y + i*43
+		text.Draw(screen, fmt.Sprintf("%d", i+1), a.labelFace, x, lineY, color.RGBA{92, 120, 88, 220})
+		text.Draw(screen, initials, a.headingFace, x+42, lineY+2, color.RGBA{55, 91, 66, 245})
+		w := font.MeasureString(a.headingFace, score).Round()
+		text.Draw(screen, score, a.headingFace, x+260-w, lineY+2, color.RGBA{118, 93, 49, 240})
+	}
+}
+
+func (a *app) drawInitials(screen *ebiten.Image) {
+	cream := color.RGBA{255, 251, 231, 248}
+	green := color.RGBA{55, 109, 71, 255}
+	muted := color.RGBA{82, 105, 87, 255}
+	pink := color.RGBA{232, 150, 172, 255}
+
+	drawRoundedPanel(screen, 190, 125, 580, 460, cream, color.RGBA{75, 129, 83, 255})
+	drawStyledCentered(screen, a.headingFace, "NEW TOP FIVE", game.LogicalWidth/2, 200, green, color.RGBA{255, 255, 255, 190}, color.RGBA{})
+	drawStyledCentered(screen, a.titleFace, fmt.Sprintf("%d", a.game.Score), game.LogicalWidth/2, 285, pink, color.RGBA{119, 139, 100, 140}, color.RGBA{})
+	drawStyledCentered(screen, a.labelFace, "TYPE 1-3 LETTERS", game.LogicalWidth/2, 345, muted, color.RGBA{}, color.RGBA{})
+
+	runes := []rune(a.initials)
+	for i := 0; i < 3; i++ {
+		x := 385 + i*95
+		display := "_"
+		if i < len(runes) {
+			display = string(runes[i])
+		}
+		drawStyledCentered(screen, a.titleFace, display, x, 430, green, color.RGBA{255, 255, 255, 150}, color.RGBA{})
+	}
+	drawStyledCentered(screen, a.labelFace, "ENTER TO SAVE   •   BACKSPACE TO CHANGE", game.LogicalWidth/2, 500, muted, color.RGBA{}, color.RGBA{})
+	drawStyledCentered(screen, a.labelFace, "Empty initials save as ?", game.LogicalWidth/2, 540, color.RGBA{112, 122, 104, 220}, color.RGBA{}, color.RGBA{})
+	a.drawEffects(screen)
 }
 
 func (a *app) drawPlay(screen *ebiten.Image) {
@@ -56,6 +98,10 @@ func (a *app) drawPlay(screen *ebiten.Image) {
 		frame = 1
 	}
 
+	if b.State == game.Landed && a.landedOverWater() {
+		vector.DrawFilledCircle(screen, float32(b.SX), float32(b.Y+27), 34, color.RGBA{87, 154, 82, 245}, true)
+		vector.DrawFilledCircle(screen, float32(b.SX+18), float32(b.Y+20), 9, color.RGBA{103, 181, 96, 245}, true)
+	}
 	blinkVisible := b.Guard == 0 || (a.frame/4)%2 == 0
 	if blinkVisible {
 		a.drawBunnySprite(screen, frame, b.SX, b.Y, 0.92)
@@ -74,6 +120,7 @@ func (a *app) drawPlay(screen *ebiten.Image) {
 		ebitenutil.DrawLine(screen, p.x, p.y, p.x+math.Cos(p.rotation)*8, p.y+math.Sin(p.rotation)*8, clr)
 		vector.DrawFilledCircle(screen, float32(p.x), float32(p.y), 2.2, clr, true)
 	}
+	a.drawEffects(screen)
 
 	a.drawHUD(screen)
 	if b.State == game.Landed {
@@ -101,6 +148,16 @@ func (a *app) drawHUD(screen *ebiten.Image) {
 	}
 }
 
+func (a *app) landedOverWater() bool {
+	wx := a.game.Camera + a.game.Bunny.SX
+	for _, p := range a.game.Ponds {
+		if wx >= p.X && wx <= p.X+p.Width {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *app) drawEndScreen(screen *ebiten.Image) {
 	cream := color.RGBA{255, 251, 231, 248}
 	green := color.RGBA{55, 109, 71, 255}
@@ -126,14 +183,16 @@ func (a *app) drawEndScreen(screen *ebiten.Image) {
 
 	remaining := (a.game.EndTicks + game.TPS - 1) / game.TPS
 	message := "Returning to the meadow..."
-	if remaining <= 1 {
+	if a.scores.Qualifies(a.game.Score) {
+		message = "A top-five flight — initials next"
+	} else if remaining <= 1 {
 		message = "Ready for another drift"
 	}
 	drawStyledCentered(screen, a.labelFace, message, game.LogicalWidth/2, 446, muted, color.RGBA{}, color.RGBA{})
 
 	for i := 0; i < 3; i++ {
 		c := color.RGBA{195, 214, 174, 170}
-		if i < (a.game.EndTicks/(game.TPS) + 1) {
+		if i < (game.EndTicks/(game.TPS) + 1) {
 			c = color.RGBA{84, 142, 91, 220}
 		}
 		vector.DrawFilledCircle(screen, float32(456+i*24), 486, 4, c, true)

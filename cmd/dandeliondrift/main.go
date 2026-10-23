@@ -31,7 +31,9 @@ type seedParticle struct {
 }
 
 type app struct {
-	game *game.Game
+	game   *game.Game
+	demo   *game.Game
+	scores game.HighScores
 
 	bunny   [4]*ebiten.Image
 	bee     [2]*ebiten.Image
@@ -43,18 +45,32 @@ type app struct {
 	headingFace font.Face
 	labelFace   font.Face
 
-	particles []seedParticle
-	frame     int
+	particles               []seedParticle
+	effects                 []effectParticle
+	sounds                  *soundBank
+	scoresPath              string
+	initialsMode            bool
+	initials                string
+	chainPop, chainPopTicks int
+	demoFrame               int
+	frame                   int
 }
 
 func main() {
-	a := &app{game: game.New(time.Now().UnixNano())}
+	const scoresPath = "scores.json"
+	scores, err := game.LoadScores(scoresPath)
+	if err != nil {
+		log.Printf("high scores unavailable, starting empty: %v", err)
+	}
+	g := game.New(time.Now().UnixNano())
+	a := &app{game: g, demo: newDemoGame(), scores: scores, scoresPath: scoresPath}
 	if err := a.loadAssets(); err != nil {
 		log.Fatal(err)
 	}
 	if err := a.loadFonts(); err != nil {
 		log.Fatal(err)
 	}
+	a.sounds = loadSoundBank()
 
 	ebiten.SetWindowSize(game.LogicalWidth, game.LogicalHeight)
 	ebiten.SetWindowResizable(false)
@@ -71,6 +87,12 @@ func (a *app) Update() error {
 	}
 	a.frame++
 
+	if a.initialsMode {
+		a.updateInitialsInput()
+		a.updateEffects()
+		return nil
+	}
+
 	in := game.Input{
 		Flap:  inpututil.IsKeyJustPressed(ebiten.KeySpace),
 		Left:  ebiten.IsKeyPressed(ebiten.KeyArrowLeft),
@@ -80,23 +102,71 @@ func (a *app) Update() error {
 	beforeScreen := a.game.Screen
 	a.game.Update(in)
 	for _, ev := range a.game.Events {
-		switch ev.Type {
-		case game.EvFlap:
-			a.spawnReleasedSeed()
-		case game.EvPuffGone:
-			a.spawnPuffRelease()
-		}
+		a.sounds.playEvent(ev)
+		a.reactToEvent(ev)
 	}
-	if beforeScreen != game.Attract && a.game.Screen == game.Attract {
+
+	if beforeScreen == game.Play && a.game.Screen == game.Attract && a.scores.Qualifies(a.game.Score) {
+		a.initialsMode = true
+		a.initials = ""
+		a.sounds.playName("highscore")
+		a.spawnBurst(game.LogicalWidth/2, 300, color.RGBA{255, 224, 118, 235}, 18, 2.6)
+	}
+	if a.game.Screen == game.Attract && !a.initialsMode {
+		a.updateDemo()
+	}
+	if beforeScreen != game.Attract && a.game.Screen == game.Attract && !a.initialsMode {
 		a.particles = a.particles[:0]
+		a.effects = a.effects[:0]
 	}
 	a.updateParticles()
+	a.updateEffects()
 	return nil
+}
+
+func (a *app) updateInitialsInput() {
+	runes := []rune(a.initials)
+	if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) && len(runes) > 0 {
+		runes = runes[:len(runes)-1]
+	}
+	for _, r := range ebiten.AppendInputChars(nil) {
+		if len(runes) >= 3 {
+			break
+		}
+		if r >= 'a' && r <= 'z' {
+			r -= 'a' - 'A'
+		}
+		if r < 'A' || r > 'Z' {
+			continue
+		}
+		runes = append(runes, r)
+	}
+	a.initials = string(runes)
+	if !inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		return
+	}
+	initials := a.initials
+	if initials == "" {
+		initials = "?"
+	}
+	a.scores.Add(game.ScoreEntry{Initials: initials, Score: a.game.Score})
+	if err := game.SaveScores(a.scoresPath, a.scores); err != nil {
+		log.Printf("save high scores: %v", err)
+	}
+	a.initialsMode = false
+	a.initials = ""
+	a.particles = a.particles[:0]
+	a.effects = a.effects[:0]
+	a.demo = newDemoGame()
+	a.demoFrame = 0
 }
 
 func (a *app) Draw(screen *ebiten.Image) {
 	a.drawMeadow(screen)
-
+	if a.initialsMode {
+		a.drawInitials(screen)
+		return
+	}
 	switch a.game.Screen {
 	case game.Attract:
 		a.drawAttract(screen)
