@@ -159,7 +159,7 @@ func TestIdleFlightEventuallyEnds(t *testing.T) {
 		g.Update(Input{})
 	}
 	if g.Bunny.State != Landed {
-		t.Fatal("idle flight did not eventually reach a gentle landing")
+		t.Fatal("idle flight did not eventually reach a landing")
 	}
 }
 
@@ -212,7 +212,7 @@ func TestPerchOnlyOnGentleDescent(t *testing.T) {
 	}
 }
 
-func TestRegrowUntilFullOrNectarSpent(t *testing.T) {
+func TestFlowerDrainsUntilCapacitySpent(t *testing.T) {
 	g := New(1)
 	g.StartFlight()
 	g.Flowers = []Flower{{X: g.Camera + 500, Height: 120, Nectar: 2, Bloomed: true}}
@@ -221,20 +221,8 @@ func TestRegrowUntilFullOrNectarSpent(t *testing.T) {
 	for i := 0; i < RegrowTicks*3; i++ {
 		g.Update(Input{})
 	}
-	if g.Seeds != 22 || g.Flowers[0].Nectar != 0 {
-		t.Fatalf("nectar-limited regrow seeds=%d nectar=%d", g.Seeds, g.Flowers[0].Nectar)
-	}
-
-	g = New(1)
-	g.StartFlight()
-	g.Flowers = []Flower{{X: g.Camera + 500, Height: 120, Nectar: 10, Bloomed: true}}
-	g.Bunny = Bunny{SX: 500, Y: GroundY - 120 - FlowerRadius - BunnyFeet, State: Perched, Perch: 0}
-	g.Seeds = MaxSeeds - 1
-	for i := 0; i < RegrowTicks*3; i++ {
-		g.Update(Input{})
-	}
-	if g.Seeds != MaxSeeds || g.Flowers[0].Nectar != 9 {
-		t.Fatalf("full-puff regrow seeds=%d nectar=%d", g.Seeds, g.Flowers[0].Nectar)
+	if g.Seeds != 18 || g.Flowers[0].Nectar != 0 {
+		t.Fatalf("flower drain seeds=%d capacity=%d", g.Seeds, g.Flowers[0].Nectar)
 	}
 }
 

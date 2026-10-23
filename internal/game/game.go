@@ -16,7 +16,7 @@ const (
 	MinSX      = 120.0
 	MaxSX      = 600.0
 
-	MaxSeeds = 240
+	MaxSeeds = 100
 
 	ScrollStart = 1.5
 	ScrollMax   = 3.0
@@ -274,7 +274,7 @@ func (g *Game) Update(in Input) {
 		g.resolveGround()
 	}
 
-	if g.Seeds == 0 && g.Bunny.State == Flying {
+	if g.Seeds == 0 && (g.Bunny.State == Flying || g.Bunny.State == Perched) {
 		g.Bunny.State = Falling
 		g.Bunny.Perch = -1
 		g.Events = append(g.Events, Event{Type: EvPuffGone})
@@ -383,14 +383,14 @@ func (g *Game) updatePerched() {
 		g.Events = append(g.Events, Event{Type: EvTakeOff})
 		return
 	}
-	if g.Seeds >= MaxSeeds || f.Nectar <= 0 {
+	if g.Seeds <= 0 || f.Nectar <= 0 {
 		g.Bunny.RegrowTimer = 0
 		return
 	}
 	g.Bunny.RegrowTimer++
 	if g.Bunny.RegrowTimer >= RegrowTicks {
 		g.Bunny.RegrowTimer = 0
-		g.Seeds++
+		g.Seeds--
 		f.Nectar--
 		g.Events = append(g.Events, Event{Type: EvRegrow})
 	}
