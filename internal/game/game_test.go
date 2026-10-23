@@ -212,7 +212,7 @@ func TestPerchOnlyOnGentleDescent(t *testing.T) {
 	}
 }
 
-func TestFlowerDrainsUntilCapacitySpent(t *testing.T) {
+func TestFlowerRechargesUntilCapacitySpent(t *testing.T) {
 	g := New(1)
 	g.StartFlight()
 	g.Flowers = []Flower{{X: g.Camera + 500, Height: 120, Nectar: 2, Bloomed: true}}
@@ -221,8 +221,8 @@ func TestFlowerDrainsUntilCapacitySpent(t *testing.T) {
 	for i := 0; i < RegrowTicks*3; i++ {
 		g.Update(Input{})
 	}
-	if g.Seeds != 18 || g.Flowers[0].Nectar != 0 {
-		t.Fatalf("flower drain seeds=%d capacity=%d", g.Seeds, g.Flowers[0].Nectar)
+	if g.Seeds != 22 || g.Flowers[0].Nectar != 0 {
+		t.Fatalf("flower recharge seeds=%d capacity=%d", g.Seeds, g.Flowers[0].Nectar)
 	}
 }
 

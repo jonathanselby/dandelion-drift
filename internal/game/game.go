@@ -16,7 +16,7 @@ const (
 	MinSX      = 120.0
 	MaxSX      = 600.0
 
-	MaxSeeds = 100
+	MaxSeeds = 50
 
 	ScrollStart = 1.5
 	ScrollMax   = 3.0
@@ -383,14 +383,14 @@ func (g *Game) updatePerched() {
 		g.Events = append(g.Events, Event{Type: EvTakeOff})
 		return
 	}
-	if g.Seeds <= 0 || f.Nectar <= 0 {
+	if g.Seeds >= MaxSeeds || f.Nectar <= 0 {
 		g.Bunny.RegrowTimer = 0
 		return
 	}
 	g.Bunny.RegrowTimer++
 	if g.Bunny.RegrowTimer >= RegrowTicks {
 		g.Bunny.RegrowTimer = 0
-		g.Seeds--
+		g.Seeds++
 		f.Nectar--
 		g.Events = append(g.Events, Event{Type: EvRegrow})
 	}
@@ -594,8 +594,9 @@ func (g *Game) resolveFireflies() {
 		pts := FireflyPoints * g.Chain
 		g.FireflyScore += pts
 		g.FirefliesCollected++
-		g.Seeds = min(MaxSeeds, g.Seeds+FireflySeeds)
-		g.Events = append(g.Events, Event{Type: EvFirefly, Value: g.Chain})
+		lost := min(FireflySeeds, g.Seeds)
+		g.Seeds -= lost
+		g.Events = append(g.Events, Event{Type: EvFirefly, Value: g.Chain}, Event{Type: EvSeedsLost, Value: lost})
 	}
 }
 
