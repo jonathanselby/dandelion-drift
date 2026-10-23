@@ -47,7 +47,7 @@ go build -trimpath -ldflags="-s -w" -o ./bin/dandelion-drift ./cmd/dandeliondrif
 ./bin/dandelion-drift
 ```
 
-The executable contains the required artwork and generates its short sound cues in code. High scores are stored locally in `scores.json` beside the working directory.
+The executable embeds five PNG sprites and generates its short sound cues in code. High scores are stored locally in `$XDG_DATA_HOME/dandelion-drift/scores.json`, falling back to `~/.local/share/dandelion-drift/scores.json`, so they persist however the game is launched.
 
 ## Engineering gate
 
@@ -78,7 +78,7 @@ Game.Update()  <---- one authoritative gameplay state
    v
 Game state ----> thin Ebitengine adapter ----> screen + procedural sound
 
-local JSON <---- top-five scores only
+user data dir JSON <---- top-five scores only
 ```
 
 There is no reusable game engine, event bus, service layer, repository abstraction, physics framework or UI framework. Presentation state such as initials entry and particles stays in the Ebitengine adapter rather than contaminating gameplay truth. See [`EDD.md`](EDD.md) and [`architecture.txt`](architecture.txt).
@@ -90,7 +90,7 @@ There is no reusable game engine, event bus, service layer, repository abstracti
 - [`DESIGN-NOTES.md`](DESIGN-NOTES.md) — material design decisions and rejected complexity.
 - [`TESTING.md`](TESTING.md) — automated testing, human UAT and failures found during packaging/runtime testing.
 - [`RELEASE.md`](RELEASE.md) — release gate and evidence status.
-- [`generated/EDD.md`](generated/EDD.md) — code-derived engineering view pinned to the approved gameplay source snapshot.
+- [`generated/EDD.md`](generated/EDD.md) — code-derived engineering view pinned to the final source commit.
 - [`generated/COMPARISON.md`](generated/COMPARISON.md) — design versus implementation comparison.
 
 ## Licence

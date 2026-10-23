@@ -37,15 +37,17 @@ seeded gameplay RNG / bounded generated world / Events
 
 Adapter-only state
 ------------------
-embedded sprites / fonts / procedural audio
+5 embedded PNG sprites / Go font / procedural audio
 particles / visual effects / initials-entry UI
-attract-mode demo / local HighScores
+attract-mode demo / local HighScores + score path
 
 Persistence
 -----------
                   +-------------------+
                   |    scores.json    |
                   | one top-five list |
+                  | ~/.local/share/   |
+                  |  dandelion-drift  |
                   +-------------------+
 
 Deliberately absent

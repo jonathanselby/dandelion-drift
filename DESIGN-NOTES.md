@@ -91,6 +91,12 @@ The release format was therefore simplified to a tar.gz containing the native ex
 
 This is not a workaround layered on top of the product. It is a smaller delivery mechanism.
 
+One consequence was easy to miss. Astro Answers' AppImage launcher chose the score directory; a bare executable has no launcher, so scores followed whatever directory it was started from. The executable now resolves the standard per-user data directory itself. That is one small function, not a configuration system.
+
+## Assets are just files
+
+During UAT, sprites were carried as base64 text. Nothing in the final runtime needed that encoding. The final release embeds five ordinary PNGs, as Astro Answers does, so the art is visible in the repository and decoded by one code path.
+
 ## What was deliberately rejected
 
 V0.1 does not contain:
