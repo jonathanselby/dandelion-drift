@@ -2,40 +2,24 @@ package main
 
 import (
 	"bytes"
-	"encoding/base64"
 	"image"
 	_ "image/png"
-	"strings"
 	"testing"
 )
 
 func TestEmbeddedAssetsDecode(t *testing.T) {
-	rawBunny, err := base64.StdEncoding.DecodeString(bunnyPNGBase64)
-	if err != nil {
-		t.Fatalf("embedded bunny base64: %v", err)
-	}
-	if _, _, err := image.Decode(bytes.NewReader(rawBunny)); err != nil {
-		t.Fatalf("embedded bunny image: %v", err)
-	}
-
 	for _, path := range []string{
-		"assets/bee.b64",
-		"assets/flower.b64",
-		"assets/frog.b64",
-		"assets/thistle.b64",
+		"assets/bunny.png",
+		"assets/bee.png",
+		"assets/flower.png",
+		"assets/frog.png",
+		"assets/thistle.png",
 	} {
 		raw, err := assetFS.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
 		}
-		if _, _, err := image.Decode(bytes.NewReader(raw)); err == nil {
-			continue
-		}
-		pngData, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
-		if err != nil {
-			t.Fatalf("base64 %s: %v", path, err)
-		}
-		if _, _, err := image.Decode(bytes.NewReader(pngData)); err != nil {
+		if _, _, err := image.Decode(bytes.NewReader(raw)); err != nil {
 			t.Fatalf("image %s: %v", path, err)
 		}
 	}
