@@ -63,7 +63,7 @@ const (
 	ChainWindow   = 120
 	ChainMax      = 5
 	FireflyPoints = 10
-	FireflySeeds  = 24
+	FireflySeeds  = 15
 
 	EndTicks = 180
 )
