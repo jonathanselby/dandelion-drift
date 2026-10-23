@@ -3,13 +3,11 @@ package main
 import (
 	"bytes"
 	"embed"
-	"encoding/base64"
 	"fmt"
 	"image"
 	"image/color"
 	_ "image/png"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -20,7 +18,7 @@ import (
 	"golang.org/x/image/font/opentype"
 )
 
-//go:embed assets/*.b64
+//go:embed assets/*.png
 var assetFS embed.FS
 
 type seedParticle struct {
@@ -58,7 +56,10 @@ type app struct {
 }
 
 func main() {
-	const scoresPath = "scores.json"
+	scoresPath, err := scorePath()
+	if err != nil {
+		log.Fatalf("resolve high-score path: %v", err)
+	}
 	scores, err := game.LoadScores(scoresPath)
 	if err != nil {
 		log.Printf("high scores unavailable, starting empty: %v", err)
@@ -188,7 +189,7 @@ func (a *app) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image
 }
 
 func (a *app) loadAssets() error {
-	sheet, err := loadBunnyImage()
+	sheet, err := loadImage("assets/bunny.png")
 	if err != nil {
 		return err
 	}
@@ -196,24 +197,24 @@ func (a *app) loadAssets() error {
 		r := image.Rect(i*100, 0, (i+1)*100, 100)
 		a.bunny[i] = sheet.SubImage(r).(*ebiten.Image)
 	}
-	beeSheet, err := loadImage("assets/bee.b64")
+	beeSheet, err := loadImage("assets/bee.png")
 	if err != nil {
 		return err
 	}
 	for i := range a.bee {
 		a.bee[i] = beeSheet.SubImage(image.Rect(i*64, 0, (i+1)*64, 64)).(*ebiten.Image)
 	}
-	frogSheet, err := loadImage("assets/frog.b64")
+	frogSheet, err := loadImage("assets/frog.png")
 	if err != nil {
 		return err
 	}
 	for i := range a.frog {
 		a.frog[i] = frogSheet.SubImage(image.Rect(i*64, 0, (i+1)*64, 64)).(*ebiten.Image)
 	}
-	if a.thistle, err = loadImage("assets/thistle.b64"); err != nil {
+	if a.thistle, err = loadImage("assets/thistle.png"); err != nil {
 		return err
 	}
-	if a.flower, err = loadImage("assets/flower.b64"); err != nil {
+	if a.flower, err = loadImage("assets/flower.png"); err != nil {
 		return err
 	}
 	return nil
@@ -224,14 +225,7 @@ func loadImage(path string) (*ebiten.Image, error) {
 	if err != nil {
 		return nil, err
 	}
-	if img, _, directErr := image.Decode(bytes.NewReader(raw)); directErr == nil {
-		return ebiten.NewImageFromImage(img), nil
-	}
-	pngData, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
-	if err != nil {
-		return nil, fmt.Errorf("decode base64 %s: %w", path, err)
-	}
-	img, _, err := image.Decode(bytes.NewReader(pngData))
+	img, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
 		return nil, fmt.Errorf("decode image %s: %w", path, err)
 	}
