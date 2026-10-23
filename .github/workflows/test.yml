@@ -34,11 +34,20 @@ jobs:
       - name: Unit tests with race detector
         run: go test -race -count=1 ./...
       - name: Linux amd64 build
-        run: go build -trimpath -ldflags="-s -w" -o ./bin/dandelion-drift ./cmd/dandeliondrift
+        run: |
+          mkdir -p ./bin
+          go build -trimpath -ldflags="-s -w" -o ./bin/Dandelion-Drift-UAT ./cmd/dandeliondrift
+          chmod +x ./bin/Dandelion-Drift-UAT
       - name: Linux arm64 build
         run: GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o ./bin/dandelion-drift-linux-arm64 ./cmd/dandeliondrift
-      - name: Chunk 4 acceptance
+      - name: Chunk 5 hardening acceptance
         run: >-
           go test ./internal/game
-          -run 'TestScoresSortedAndFiveOnly|TestScoreQualification|TestScoreSaveLoadRoundTrip|TestMissingScoresStartEmpty|TestMalformedScoresReportAndStartEmpty|TestInitialsAcceptOneToThreeLettersAndQuestionMark|TestCompletedFlightReturnsAndStartsFresh|TestDeterministicGameplayWithHazards|TestInvariantsHoldOverLongGeneration'
+          -run 'TestHardeningRepresentativeRunsKeepStateSane|TestSpaceOnlyRunAdvancesWithoutHorizontalInput|TestFallingStateIgnoresHazardDamage|TestRepeatedCompletedFlightsStartClean|TestScoresSortedAndFiveOnly|TestScoreQualification|TestScoreSaveLoadRoundTrip|TestMissingScoresStartEmpty|TestMalformedScoresReportAndStartEmpty|TestInitialsAcceptOneToThreeLettersAndQuestionMark|TestCompletedFlightReturnsAndStartsFresh|TestDeterministicGameplayWithHazards|TestInvariantsHoldOverLongGeneration|TestLiveEntityBudgetAcrossLongWorlds'
           -count=1
+      - name: Upload Linux UAT build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dandelion-Drift-UAT-linux-amd64
+          path: ./bin/Dandelion-Drift-UAT
+          if-no-files-found: error
