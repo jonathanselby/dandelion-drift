@@ -1,6 +1,6 @@
 # Dandelion Drift — Design / Implementation Comparison
 
-**Implementation evidence:** `74ec654e7ac7c92ff88befe3f2fd800431648173`  
+**Implementation evidence:** `6c70eea985b58d6fe3511b26ba5b7c7d2d902dfa`  
 **Generated:** 2026-10-23
 
 | Design area | Final contract | Recovered implementation | Assessment |
@@ -20,6 +20,14 @@
 | renderer | thin Ebitengine layer | renderer owns no gameplay decisions | MATCH |
 | sound | small procedural cues | generated PCM cue table | MATCH |
 | full-screen display | fixed 960×720, aspect preserved | logical layout + black final-screen fill | MATCH |
+| update order | explicit single-threaded loop; perch before hazards; empty check after hazards | `Update` follows that order | MATCH |
+| perching | gentle descent only; recharge every 15 ticks from finite nectar | `resolvePerch` velocity window + radius; `updatePerched` | MATCH |
+| hazards | bee 3, thistle 3, grass 1, pond 4, frog 6; guard; ground still bounces | constants + `knock`; guarded ground bounce | MATCH |
+| world generation | eight chunk families; three distance bands; structural flower rule | `chooseChunkKind` bands at 250 m and 750 m; forced meadow after flower-free gap | MATCH |
+| RNG | gameplay RNG for generation only; cosmetics derived | `rng` used only in `world.go` and seeding; adapter has no RNG | MATCH |
+| resource bounds | 120 world entities, 8 events, 6 planters, 256 effect particles | asserted in hardening/invariant tests and `effects.go` | MATCH |
+| score location | user data directory, independent of launch path | `storage.go` resolves `XDG_DATA_HOME` or `~/.local/share` | MATCH after correction |
+| hero assets | raster sprites as files | five embedded PNGs | MATCH after correction |
 | CI | format/vet/race/amd64/arm64/hardening | encoded in `test.yml` | MATCH |
 | release | simple native x86-64 archive | native executable smoke-tested and tar packaged | MATCH after publication cleanup |
 | network/privacy | none | no network/account/telemetry/runtime AI path | MATCH |
@@ -38,11 +46,13 @@ Early packaging work used AppImage and raw native binaries. Target-Ubuntu testin
 
 Two obsolete encoded UAT artefacts remained after the approved gameplay snapshot (`assets/bunny.b64` and `assets/sounds.zip.b64`). They were not used by the final runtime and were removed during publication cleanup. No gameplay behaviour changed.
 
+A final benchmark against Astro Answers found that the native executable wrote `scores.json` to whatever directory it was launched from; Astro avoids this through its AppImage launcher. The executable now resolves the per-user data directory. The same pass converted the remaining base64 sprite data to plain PNG files. Neither change affects gameplay.
+
 ## Deliberate differences from Astro Answers
 
 Dandelion Drift has more adapter source files because the scrolling meadow requires separate scene/world/effect rendering responsibilities. This is not additional application architecture: all files remain inside one Ebitengine adapter and share one gameplay core.
 
-Dandelion Drift uses a native tar.gz rather than AppImage because the latter was less reliable on the tested Ubuntu target. The Garage rule is reliable simplicity, not identical packaging for its own sake.
+Dandelion Drift uses a native tar.gz rather than AppImage because the latter was less reliable on the tested Ubuntu target. The Garage rule is reliable simplicity, not identical packaging for its own sake. The cost is one small score-location function that AppImage's launcher would otherwise have provided.
 
 ## Open evidence
 

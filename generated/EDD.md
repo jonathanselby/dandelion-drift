@@ -1,10 +1,10 @@
 # Dandelion Drift — Generated Engineering Design Document
 
-**Evidence commit:** `74ec654e7ac7c92ff88befe3f2fd800431648173`  
+**Evidence commit:** `6c70eea985b58d6fe3511b26ba5b7c7d2d902dfa`  
 **Method:** code-derived review using the Jonno's Garage `codebase-to-EDD` evidence discipline  
 **Generated:** 2026-10-23
 
-This document describes the approved gameplay implementation at the evidence commit. The hand-written `PRD.md` and `EDD.md` are comparison targets, not runtime evidence.
+This document describes the final V0.1.0 source at the evidence commit. Later commits change documentation only. The hand-written `PRD.md` and `EDD.md` are comparison targets, not runtime evidence.
 
 ## 1. Executive description
 
@@ -19,10 +19,13 @@ This document describes the approved gameplay implementation at the evidence com
 - `internal/game/scores.go` — local top-five score persistence;
 - `internal/game/*_test.go` — rules, hardening, determinism, world invariants and final balance evidence;
 - `cmd/dandeliondrift/main.go` — Ebitengine adapter, input, assets, fonts, score/initials integration;
+- `cmd/dandeliondrift/storage.go` — high-score file location;
+- `cmd/dandeliondrift/assets/*.png` — five embedded sprites;
 - `cmd/dandeliondrift/scenes.go` — attract/play/result/initials presentation;
 - `cmd/dandeliondrift/world_render.go` and `effects.go` — world and cosmetic rendering;
 - `cmd/dandeliondrift/audio.go` — procedural sound cues and silent fallback;
 - `cmd/dandeliondrift/assets_test.go` — asset decode and procedural audio validation;
+- `cmd/dandeliondrift/storage_test.go` — score-location rules;
 - `.github/workflows/test.yml` — engineering gate;
 - `VERSION` — release boundary.
 
@@ -136,6 +139,8 @@ frog       6
 
 **KNOWN** — only one local top-five table persists.
 
+**KNOWN** — the file is `$XDG_DATA_HOME/dandelion-drift/scores.json`, falling back to `~/.local/share/dandelion-drift/scores.json`. It does not depend on the working directory. An unresolvable home directory fails startup visibly.
+
 **KNOWN** — score writes use temp-file then rename. Missing file starts empty. Malformed data is reported and normalised/empty behaviour is used rather than crashing the application.
 
 ## 13. Adapter and rendering
@@ -150,7 +155,7 @@ frog       6
 
 ## 14. Assets and sound
 
-**KNOWN** — final visual identity uses one embedded bunny sheet plus embedded bee, frog, thistle and flower image data.
+**KNOWN** — final visual identity uses five plain PNGs embedded with `//go:embed assets/*.png`: bunny sheet, bee sheet, frog sheet, thistle and flower. There is no base64 decode path.
 
 **KNOWN** — sound cues are generated in code from small frequency/duration/volume specifications.
 
@@ -160,7 +165,9 @@ frog       6
 
 **KNOWN** — gameplay tests are headless.
 
-**KNOWN** — hardening tests include representative long runs, repeated fresh flights and bounded live-world checks.
+**KNOWN** — hardening tests include representative long runs, repeated fresh flights and bounded live-world checks: at most 120 live world entities, 8 events per tick and 6 planters/planted flowers. Cosmetic effect particles are capped at 256 in the adapter.
+
+**KNOWN** — the gameplay RNG is consumed only by world generation. Planted-flower height, bee bob and all cosmetic variation are derived arithmetically, so cosmetics cannot perturb gameplay.
 
 **KNOWN** — final balance tests explicitly prove 50 starting puffs, flower recharge, firefly drain and no negative reserve.
 
@@ -177,6 +184,8 @@ Sprite fluidity was improved in the renderer without changing deterministic game
 Audio moved from embedded bundle expectations to generated cues with silent fallback.
 
 Packaging moved away from AppImage after target-Ubuntu/FUSE friction. The final delivery path is a native Linux x86-64 executable preserved inside a tar.gz.
+
+The release benchmark against Astro Answers then found that, without an AppImage launcher, scores were written to the launch directory. The executable now resolves the per-user data directory itself. The same pass replaced base64-encoded sprites with plain embedded PNGs.
 
 ## 17. Open evidence
 

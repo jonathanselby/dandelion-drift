@@ -97,6 +97,14 @@ flap -> spend one puff -> glide -> avoid / accept risk -> land on flower -> rech
 - gamepad or touch input in V0.1;
 - Windows, macOS or mobile packaging in V0.1.
 
+These exclusions are deliberate. Challenge should come from the interaction of one shrinking resource, scrolling pressure, flower placement and hazards rather than from additional game systems.
+
+## V0.2 direction
+
+No V0.2 scope is committed.
+
+V0.1 contains no abstractions added in anticipation of later platforms, input methods or content. Any V0.2 direction is to be recorded in this section before implementation begins, in the same way Astro Answers records its mobile direction, and must not change the V0.1 Linux implementation.
+
 ## Functional requirements
 
 ### FR1 — Scrolling
@@ -192,7 +200,7 @@ Distance is measured from world-camera progress. Fireflies contribute 10 points 
 
 ### FR12 — High scores
 
-One persistent top-five score table is stored locally.
+One persistent top-five score table is stored locally in the user's data directory, so it persists regardless of where the executable is launched from.
 
 A qualifying run allows one to three letters. Enter confirms. Empty initials are stored as `?`.
 
@@ -261,7 +269,8 @@ V0.1 is accepted when automated and playable evidence shows that:
 20. gameplay logic is testable without the renderer;
 21. full-screen 4:3 geometry is preserved without stretching;
 22. `gofmt`, `go vet`, race tests, Linux/amd64 build and Linux/ARM64 build pass in CI;
-23. the production Linux x86-64 release executable survives the graphical launch smoke test.
+23. the production Linux x86-64 release executable survives the graphical launch smoke test;
+24. the finished application is run through the Garage constrained-hardware benchmark.
 
 ## Definition of done
 
