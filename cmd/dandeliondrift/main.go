@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"encoding/base64"
 	"fmt"
@@ -223,11 +224,14 @@ func loadImage(path string) (*ebiten.Image, error) {
 	if err != nil {
 		return nil, err
 	}
+	if img, _, directErr := image.Decode(bytes.NewReader(raw)); directErr == nil {
+		return ebiten.NewImageFromImage(img), nil
+	}
 	pngData, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
 	if err != nil {
 		return nil, fmt.Errorf("decode base64 %s: %w", path, err)
 	}
-	img, _, err := image.Decode(strings.NewReader(string(pngData)))
+	img, _, err := image.Decode(bytes.NewReader(pngData))
 	if err != nil {
 		return nil, fmt.Errorf("decode image %s: %w", path, err)
 	}

@@ -22,6 +22,9 @@ func TestEmbeddedAssetsDecode(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
 		}
+		if _, _, err := image.Decode(bytes.NewReader(raw)); err == nil {
+			continue
+		}
 		pngData, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
 		if err != nil {
 			t.Fatalf("base64 %s: %v", path, err)
