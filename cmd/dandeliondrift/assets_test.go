@@ -11,8 +11,15 @@ import (
 )
 
 func TestEmbeddedAssetsDecode(t *testing.T) {
+	rawBunny, err := base64.StdEncoding.DecodeString(bunnyPNGBase64)
+	if err != nil {
+		t.Fatalf("embedded bunny base64: %v", err)
+	}
+	if _, _, err := image.Decode(bytes.NewReader(rawBunny)); err != nil {
+		t.Fatalf("embedded bunny image: %v", err)
+	}
+
 	for _, path := range []string{
-		"assets/bunny.b64",
 		"assets/bee.b64",
 		"assets/flower.b64",
 		"assets/frog.b64",

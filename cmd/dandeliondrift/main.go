@@ -188,7 +188,7 @@ func (a *app) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image
 }
 
 func (a *app) loadAssets() error {
-	sheet, err := loadImage("assets/bunny.b64")
+	sheet, err := loadBunnyImage()
 	if err != nil {
 		return err
 	}
