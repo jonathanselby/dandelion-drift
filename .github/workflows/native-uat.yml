@@ -1,0 +1,82 @@
+name: Build Native UAT
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/native-uat.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-native-uat:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.x
+
+      - name: Validate current game
+        run: go test ./...
+
+      - name: Build native Linux UAT
+        shell: bash
+        run: |
+          set -euo pipefail
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -trimpath -ldflags='-s -w' \
+            -o Dandelion-Drift-UAT-v0.1-linux-x86_64 ./cmd/dandeliondrift
+          chmod +x Dandelion-Drift-UAT-v0.1-linux-x86_64
+          file Dandelion-Drift-UAT-v0.1-linux-x86_64
+          sha256sum Dandelion-Drift-UAT-v0.1-linux-x86_64
+
+      - name: Install UPX
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 \
+            -o upx.tar.xz \
+            https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz
+          tar -xf upx.tar.xz
+          sudo install -m 0755 upx-4.2.4-amd64_linux/upx /usr/local/bin/upx
+          upx --version | head -2
+
+      - name: Compress native executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          upx --best --lzma Dandelion-Drift-UAT-v0.1-linux-x86_64
+          chmod +x Dandelion-Drift-UAT-v0.1-linux-x86_64
+          file Dandelion-Drift-UAT-v0.1-linux-x86_64
+          du -h Dandelion-Drift-UAT-v0.1-linux-x86_64
+          test $(stat -c%s Dandelion-Drift-UAT-v0.1-linux-x86_64) -lt 7000000
+
+      - name: Launch test compressed executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LIBGL_ALWAYS_SOFTWARE=1
+          set +e
+          timeout 5s xvfb-run -a ./Dandelion-Drift-UAT-v0.1-linux-x86_64 >uat-launch.log 2>&1
+          rc=$?
+          set -e
+          cat uat-launch.log
+          if [ "$rc" -ne 124 ]; then
+            echo "UAT executable exited unexpectedly with code $rc"
+            exit "$rc"
+          fi
+          echo "Launch gate passed: executable remained running for 5 seconds."
+
+      - name: Upload native UAT executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dandelion-Drift-UAT-v0.1-linux-x86_64
+          path: Dandelion-Drift-UAT-v0.1-linux-x86_64
+          if-no-files-found: error
+          retention-days: 30
